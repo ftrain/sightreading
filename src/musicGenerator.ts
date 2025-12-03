@@ -23,6 +23,17 @@ export function getIncludeFingering(): boolean {
   return includeFingering;
 }
 
+// Key override for practice - null means use level default
+let keyOverride: string | null = null;
+
+export function setKeyOverride(key: string | null): void {
+  keyOverride = key;
+}
+
+export function getKeyOverride(): string | null {
+  return keyOverride;
+}
+
 export interface GeneratedMusic {
   xml: string;
   timeSignature: { beats: number; beatType: number };
@@ -481,7 +492,8 @@ interface LevelConfig {
 }
 
 function getLevelConfig(level: number, subLevel: number): LevelConfig {
-  const keyInfo = getKeyForLevel(level);
+  // Use key override if set, otherwise use level default
+  const keyInfo = keyOverride && keys[keyOverride] ? keys[keyOverride] : getKeyForLevel(level);
 
   // Default configuration
   const config: LevelConfig = {

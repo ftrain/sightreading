@@ -6,6 +6,7 @@ import {
   generateMusicXML,
   getLevel,
   setLevel,
+  setSubLevel,
   incrementLevel,
   getFullLevelString,
   getRepetitionsRemaining,
@@ -17,6 +18,7 @@ import {
   setBpm,
   getBpmMasteryRemaining,
   setIncludeFingering,
+  setKeyOverride,
 } from './musicGenerator';
 import type { NoteData } from './musicGenerator';
 import { analyzePhrase, getAnalysisSummary } from './theoryAnalyzer';
@@ -53,13 +55,8 @@ let selectedMidiInput: string | null = localStorage.getItem('midiDeviceId');
 let bpm = 30;
 let metronomeEnabled = true;
 let metronomeVolume = -20; // dB base for metronome (quieter default)
-let handsSeparate = false;
 
-// Hands separate mode: 'rh' = right hand, 'lh' = left hand, 'both' = both hands
-type HandMode = 'rh' | 'lh' | 'both';
-let currentHandMode: HandMode = 'rh';
-
-// Store the current piece's XML so we can replay it with different hands
+// Store the current piece's XML
 let currentPieceXml: string = '';
 
 // Performance tracking - did user play all notes correctly?
@@ -154,19 +151,22 @@ function updateVerovioOptions() {
   const width = Math.max(600, container.clientWidth - 40);
 
   // Adjust scale based on mobile mode - smaller for better spacing
-  const scale = isMobileMode() ? 40 : 45;
+  const scale = isMobileMode() ? 35 : 40;
 
   toolkit.setOptions({
     pageWidth: width,
-    pageHeight: isMobileMode() ? 350 : 700,
+    pageHeight: isMobileMode() ? 320 : 650,
     scale: scale,
     adjustPageHeight: true,
     footer: 'none',
     header: 'none',
     breaks: 'encoded', // Respect system breaks in MusicXML
     // Spacing options for better note distribution
-    spacingNonLinear: 0.6, // More space for shorter notes (default 0.54)
-    spacingLinear: 0.25, // Base spacing factor
+    spacingNonLinear: 0.65, // More space for shorter notes
+    spacingLinear: 0.3, // Base spacing factor
+    minMeasureWidth: 120, // Minimum measure width
+    // Connect barlines across grand staff
+    barLineSeparation: 0.6,
   });
 }
 
@@ -284,14 +284,7 @@ function generateAndRender() {
     }
   }
 
-  // If hands separate mode, start with right hand only
-  if (handsSeparate) {
-    currentHandMode = 'rh';
-  } else {
-    currentHandMode = 'both';
-  }
-
-  renderCurrentHand();
+  renderCurrentMusic();
 
   // Update level display
   updateLevelDisplay();
@@ -300,32 +293,12 @@ function generateAndRender() {
   updateTheoryHint();
 }
 
-function renderCurrentHand() {
+function renderCurrentMusic() {
   toolkit.loadData(currentPieceXml);
   const svg = toolkit.renderToSVG(1);
   const notation = document.getElementById('notation')!;
   notation.innerHTML = svg;
-
-  // Update the hand indicator in level display
-  updateHandIndicator();
-
-  // Note: groupNotesByPosition is called after rendering is complete
-  // The caller should ensure this happens at the right time
   groupNotesByPosition();
-}
-
-function updateHandIndicator() {
-  const levelIndicator = document.getElementById('levelIndicator');
-  if (levelIndicator) {
-    const level = `Level ${getFullLevelString()}`;
-    if (handsSeparate) {
-      const modeLabel =
-        currentHandMode === 'rh' ? 'RH' : currentHandMode === 'lh' ? 'LH' : 'Both';
-      levelIndicator.textContent = `${level} (${modeLabel})`;
-    } else {
-      levelIndicator.textContent = level;
-    }
-  }
 }
 
 function updateLevelDisplay() {
@@ -333,6 +306,7 @@ function updateLevelDisplay() {
   const levelIndicator = document.getElementById('levelIndicator');
   const lessonInfo = document.getElementById('lessonInfo');
   const progressInfo = document.getElementById('progressInfo');
+  const levelJump = document.getElementById('levelJump') as HTMLSelectElement;
 
   const levelString = getFullLevelString();
   const levelText = `Level ${levelString}`;
@@ -344,13 +318,12 @@ function updateLevelDisplay() {
 
   // Update the control bar indicator
   if (levelIndicator) {
-    if (handsSeparate) {
-      const modeLabel =
-        currentHandMode === 'rh' ? 'RH' : currentHandMode === 'lh' ? 'LH' : 'Both';
-      levelIndicator.textContent = `${levelText} (${modeLabel})`;
-    } else {
-      levelIndicator.textContent = levelText;
-    }
+    levelIndicator.textContent = levelText;
+  }
+
+  // Sync level jump selector
+  if (levelJump) {
+    levelJump.value = String(getLevel());
   }
 
   if (lessonInfo) {
@@ -407,10 +380,8 @@ function groupNotesByPosition() {
   const elements = notation.querySelectorAll('.note, .rest');
   const notationRect = notation.getBoundingClientRect();
 
-  // Determine which staff to include based on current hand mode
-  // RH = staff 1 (treble), LH = staff 2 (bass), both = null (include all)
-  const staffToInclude =
-    currentHandMode === 'rh' ? 1 : currentHandMode === 'lh' ? 2 : null;
+  // Include all staves (both hands)
+  const staffToInclude: number | null = null;
 
   // First, collect all elements with their positions
   interface NotePosition {
@@ -530,9 +501,6 @@ function groupNotesByPosition() {
     }
   });
 
-  console.log(
-    `groupNotesByPosition: mode=${currentHandMode}, beatGroups.length=${beatGroups.length}, systems=${systemYRanges.length}`
-  );
 }
 
 function getDurationFromElement(el: SVGElement): number {
@@ -776,12 +744,28 @@ function setupControls() {
     });
   }
 
-  const handsSeparateCheckbox = document.getElementById(
-    'handsSeparate'
-  ) as HTMLInputElement;
-  if (handsSeparateCheckbox) {
-    handsSeparateCheckbox.addEventListener('change', () => {
-      handsSeparate = handsSeparateCheckbox.checked;
+  // Level jump selector
+  const levelJumpSelect = document.getElementById('levelJump') as HTMLSelectElement;
+  if (levelJumpSelect) {
+    levelJumpSelect.addEventListener('change', () => {
+      const newLevel = parseInt(levelJumpSelect.value);
+      if (newLevel >= 1) {
+        setLevel(newLevel);
+        setSubLevel(0);
+        if (!isPlaying) {
+          generateAndRender();
+        }
+        updateLevelDisplay();
+      }
+    });
+  }
+
+  // Key override selector
+  const keySelect = document.getElementById('keySelect') as HTMLSelectElement;
+  if (keySelect) {
+    keySelect.addEventListener('change', () => {
+      const selectedKey = keySelect.value || null;
+      setKeyOverride(selectedKey);
       if (!isPlaying) {
         generateAndRender();
       }
@@ -974,58 +958,17 @@ function onPieceComplete() {
     el.classList.add('past');
   });
 
-  // Determine what to do next based on hands separate mode
-  let shouldGenerateNew = false;
-
-  if (handsSeparate) {
-    if (currentHandMode === 'rh') {
-      // Move to left hand (same piece) if no mistake
-      if (!hadMistake) {
-        currentHandMode = 'lh';
-      }
-      // If had mistake, stay on RH and repeat
-    } else if (currentHandMode === 'lh') {
-      // Move to both hands (same piece) if no mistake
-      if (!hadMistake) {
-        currentHandMode = 'both';
-      }
-      // If had mistake, stay on LH and repeat
-    } else {
-      // Both hands mode
-      if (!hadMistake) {
-        // Success! Increment level and generate new piece
-        incrementLevel();
-        shouldGenerateNew = true;
-      }
-      // If had mistake in "both" mode, repeat "both" (don't generate new)
-    }
-  } else {
-    // Not in hands separate mode
-    if (!hadMistake) {
-      incrementLevel();
-    }
-    // Always generate new piece (even on mistake) when not in hands separate mode
-    shouldGenerateNew = true;
+  // Advance level if no mistakes
+  if (!hadMistake) {
+    incrementLevel();
   }
 
-  // Reset mistake tracking for next round
+  // Reset tracking for next round
   hadMistake = false;
   currentBeatIndex = 0;
 
-  if (shouldGenerateNew) {
-    generateAndRender();
-  } else {
-    // Same piece, same or different hand - re-render and clear visual state
-    renderCurrentHand();
-    updateLevelDisplay();
-
-    // Clear any correct/wrong/past markers from previous attempt
-    const notationEl = document.getElementById('notation')!;
-    notationEl.querySelectorAll('.note, .rest').forEach((el) => {
-      el.classList.remove('correct', 'wrong', 'past');
-      el.removeAttribute('data-early-correct');
-    });
-  }
+  // Generate new piece
+  generateAndRender();
 
   Tone.getTransport().stop();
   Tone.getTransport().cancel();
