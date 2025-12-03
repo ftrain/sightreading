@@ -11,6 +11,12 @@ import {
   isMobileMode,
   resetProgress,
   setSubLevel,
+  getCurrentBpm,
+  getSuggestedBpm,
+  shouldIncreaseTempo,
+  increaseTempo,
+  setBpm,
+  getBpmMasteryRemaining,
 } from '../musicGenerator';
 
 describe('musicGenerator', () => {
@@ -40,12 +46,12 @@ describe('musicGenerator', () => {
       expect(getFullLevelString()).toBe('1d');
     });
 
-    it('should clamp level to valid range (1-10)', () => {
+    it('should clamp level to valid range (1-20)', () => {
       setLevel(0);
       expect(getLevel()).toBe(1);
 
-      setLevel(15);
-      expect(getLevel()).toBe(10);
+      setLevel(25);
+      expect(getLevel()).toBe(20);
     });
 
     it('should require 3 successful plays to advance sub-level', () => {
@@ -76,14 +82,14 @@ describe('musicGenerator', () => {
       expect(getSubLevel()).toBe(0);
     });
 
-    it('should not advance past level 10', () => {
-      setLevel(10);
+    it('should not advance past level 20', () => {
+      setLevel(20);
       setSubLevel(3);
-      // Complete sub-level 3 at level 10
+      // Complete sub-level 3 at level 20
       for (let rep = 0; rep < 3; rep++) {
         incrementLevel();
       }
-      expect(getLevel()).toBe(10);
+      expect(getLevel()).toBe(20);
     });
 
     it('should reset progress correctly', () => {
@@ -96,6 +102,66 @@ describe('musicGenerator', () => {
       expect(getLevel()).toBe(1);
       expect(getSubLevel()).toBe(0);
       expect(getRepetitionsRemaining()).toBe(3);
+      expect(getCurrentBpm()).toBe(30);
+    });
+  });
+
+  describe('Tempo Management', () => {
+    it('should start at BPM 30', () => {
+      expect(getCurrentBpm()).toBe(30);
+    });
+
+    it('should suggest appropriate BPM for each level', () => {
+      expect(getSuggestedBpm(1)).toBe(30);
+      expect(getSuggestedBpm(2)).toBe(30);
+      expect(getSuggestedBpm(3)).toBe(40);
+      expect(getSuggestedBpm(7)).toBe(60);
+    });
+
+    it('should set BPM when level changes', () => {
+      setLevel(3);
+      expect(getCurrentBpm()).toBe(getSuggestedBpm(3));
+    });
+
+    it('should allow manual BPM setting', () => {
+      setBpm(120);
+      expect(getCurrentBpm()).toBe(120);
+    });
+
+    it('should clamp BPM to valid range', () => {
+      setBpm(10);
+      expect(getCurrentBpm()).toBe(20);
+
+      setBpm(250);
+      expect(getCurrentBpm()).toBe(200);
+    });
+
+    it('should track tempo mastery separately', () => {
+      expect(getBpmMasteryRemaining()).toBe(3);
+
+      incrementLevel();
+      expect(getBpmMasteryRemaining()).toBe(2);
+
+      incrementLevel();
+      expect(getBpmMasteryRemaining()).toBe(1);
+
+      incrementLevel();
+      // Tempo mastery should continue even after sub-level advances
+      expect(shouldIncreaseTempo()).toBe(true);
+    });
+
+    it('should reset tempo mastery when tempo increases', () => {
+      // Build up tempo mastery
+      for (let i = 0; i < 3; i++) {
+        incrementLevel();
+      }
+      expect(shouldIncreaseTempo()).toBe(true);
+
+      const oldBpm = getCurrentBpm();
+      increaseTempo();
+      expect(getCurrentBpm()).toBe(oldBpm + 5);
+      expect(shouldIncreaseTempo()).toBe(false);
+      expect(getBpmMasteryRemaining()).toBe(3);
     });
   });
 
@@ -144,6 +210,18 @@ describe('musicGenerator', () => {
       const result = generateMusicXML();
       expect(result.level).toBe(1);
       expect(result.subLevel).toBe(0);
+    });
+
+    it('should include suggested BPM in result', () => {
+      const result = generateMusicXML();
+      expect(result.suggestedBpm).toBeDefined();
+      expect(result.suggestedBpm).toBeGreaterThan(0);
+    });
+
+    it('should include key name in result', () => {
+      const result = generateMusicXML();
+      expect(result.keyName).toBeDefined();
+      expect(result.keyName).toBe('C major');
     });
 
     it('should generate the correct number of measures', () => {
@@ -239,6 +317,49 @@ describe('musicGenerator', () => {
     });
   });
 
+  describe('Key Progression (Level 8+)', () => {
+    it('should use G major at level 8', () => {
+      setLevel(8);
+      const result = generateMusicXML();
+      expect(result.keyName).toBe('G major');
+      expect(result.xml).toContain('<fifths>1</fifths>');
+    });
+
+    it('should use F major at level 9', () => {
+      setLevel(9);
+      const result = generateMusicXML();
+      expect(result.keyName).toBe('F major');
+      expect(result.xml).toContain('<fifths>-1</fifths>');
+    });
+
+    it('should use D major at level 10', () => {
+      setLevel(10);
+      const result = generateMusicXML();
+      expect(result.keyName).toBe('D major');
+      expect(result.xml).toContain('<fifths>2</fifths>');
+    });
+
+    it('should reset to whole notes at sub-level 0 for new keys', () => {
+      setLevel(8);
+      setSubLevel(0);
+      let foundWholeNote = false;
+      for (let i = 0; i < 10; i++) {
+        const result = generateMusicXML();
+        if (result.xml.includes('<type>whole</type>')) {
+          foundWholeNote = true;
+          break;
+        }
+      }
+      expect(foundWholeNote).toBe(true);
+    });
+
+    it('should include key name in lesson description for level 8+', () => {
+      setLevel(8);
+      const result = generateMusicXML();
+      expect(result.lessonDescription).toContain('G major');
+    });
+  });
+
   describe('Lesson Descriptions', () => {
     it('should have correct description for level 1a', () => {
       setLevel(1);
@@ -329,6 +450,19 @@ describe('musicGenerator', () => {
         }
       }
       expect(getLevel()).toBe(10);
+    });
+
+    it('should support progression through all 20 levels', () => {
+      setLevel(15);
+      expect(getLevel()).toBe(15);
+
+      // Advance one level
+      for (let sub = 0; sub < 4; sub++) {
+        for (let rep = 0; rep < 3; rep++) {
+          incrementLevel();
+        }
+      }
+      expect(getLevel()).toBe(16);
     });
   });
 });

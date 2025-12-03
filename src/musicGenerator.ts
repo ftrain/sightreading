@@ -7,6 +7,8 @@
 // - Each sub-level introduces ONE new concept
 // - Folk and classical melodic patterns aid memorability
 // - Musical coherence helps students understand phrasing
+// - NEW KEYS RESET TO BASICS - introduce key with whole notes first
+// - TEMPO is separate from note complexity - master slow before fast
 
 export interface GeneratedMusic {
   xml: string;
@@ -15,24 +17,32 @@ export interface GeneratedMusic {
   subLevel: number;
   lessonDescription: string;
   numMeasures: number;
+  suggestedBpm: number;
+  keyName: string;
 }
 
-// Level structure: Level 1a, 1b, 1c... 2a, 2b, 2c... etc.
+// Level structure: Level 1a, 1b, 1c, 1d... 2a, 2b, 2c, 2d... etc.
 // Each level has 4 sub-levels to master before advancing
 interface LevelProgress {
   level: number;
   subLevel: number; // 0-3 (a, b, c, d)
   repetitions: number; // How many times this sub-level has been practiced
+  currentBpm: number; // Current tempo being practiced
+  bpmMastery: number; // How many successful plays at current BPM
 }
 
 let progress: LevelProgress = {
   level: 1,
   subLevel: 0,
   repetitions: 0,
+  currentBpm: 30,
+  bpmMastery: 0,
 };
 
-// Mastery requirements: need 3 successful plays to advance sub-level
-const MASTERY_THRESHOLD = 3;
+// Mastery requirements
+const NOTE_MASTERY_THRESHOLD = 3; // Successful plays to advance sub-level
+const BPM_MASTERY_THRESHOLD = 3; // Successful plays at tempo before suggesting increase
+const BPM_INCREMENT = 5; // How much to increase tempo
 
 // Mobile mode: 4 measures instead of 8
 let mobileMode = false;
@@ -61,10 +71,36 @@ export function getFullLevelString(): string {
   return `${progress.level}${getSubLevelLetter()}`;
 }
 
+export function getCurrentBpm(): number {
+  return progress.currentBpm;
+}
+
+export function getBpmMastery(): number {
+  return progress.bpmMastery;
+}
+
+export function getSuggestedBpm(level: number): number {
+  // Tempo recommendations based on pedagogical best practices
+  // Beginners start VERY slow, build up gradually
+  if (level <= 2) return 30; // Whole/half notes - very slow
+  if (level <= 4) return 40; // Quarter notes introduction
+  if (level <= 6) return 50; // Building complexity
+  if (level <= 7) return 60; // Eighth notes need slightly faster
+  // New keys reset to slower tempos
+  if (level >= 8) {
+    // Each new key level starts slower, then can build
+    const keyLevel = level - 7; // 1, 2, 3...
+    return 40 + (keyLevel * 5); // 45, 50, 55... but still moderate
+  }
+  return 60;
+}
+
 export function setLevel(level: number): void {
-  progress.level = Math.max(1, Math.min(10, level));
+  progress.level = Math.max(1, Math.min(20, level)); // Expanded to 20 levels
   progress.subLevel = 0;
   progress.repetitions = 0;
+  progress.currentBpm = getSuggestedBpm(progress.level);
+  progress.bpmMastery = 0;
 }
 
 export function setSubLevel(subLevel: number): void {
@@ -72,79 +108,141 @@ export function setSubLevel(subLevel: number): void {
   progress.repetitions = 0;
 }
 
+export function setBpm(bpm: number): void {
+  progress.currentBpm = Math.max(20, Math.min(200, bpm));
+  progress.bpmMastery = 0;
+}
+
+// Called when user successfully completes a piece
 export function incrementLevel(): void {
   progress.repetitions++;
+  progress.bpmMastery++;
 
-  // Need MASTERY_THRESHOLD successful plays to advance
-  if (progress.repetitions >= MASTERY_THRESHOLD) {
+  // Need NOTE_MASTERY_THRESHOLD successful plays to advance
+  if (progress.repetitions >= NOTE_MASTERY_THRESHOLD) {
     progress.repetitions = 0;
     progress.subLevel++;
 
     // If we've completed all sub-levels, advance to next level
     if (progress.subLevel >= 4) {
       progress.subLevel = 0;
-      progress.level = Math.min(10, progress.level + 1);
+      progress.level = Math.min(20, progress.level + 1);
+      // Reset BPM to suggested for new level
+      progress.currentBpm = getSuggestedBpm(progress.level);
+      progress.bpmMastery = 0;
     }
   }
 }
 
+// Check if user should increase tempo
+export function shouldIncreaseTempo(): boolean {
+  return progress.bpmMastery >= BPM_MASTERY_THRESHOLD;
+}
+
+export function increaseTempo(): void {
+  if (shouldIncreaseTempo()) {
+    progress.currentBpm = Math.min(200, progress.currentBpm + BPM_INCREMENT);
+    progress.bpmMastery = 0;
+  }
+}
+
 export function resetProgress(): void {
-  progress = { level: 1, subLevel: 0, repetitions: 0 };
+  progress = {
+    level: 1,
+    subLevel: 0,
+    repetitions: 0,
+    currentBpm: 30,
+    bpmMastery: 0,
+  };
 }
 
 export function getRepetitionsRemaining(): number {
-  return Math.max(0, MASTERY_THRESHOLD - progress.repetitions);
+  return Math.max(0, NOTE_MASTERY_THRESHOLD - progress.repetitions);
+}
+
+export function getBpmMasteryRemaining(): number {
+  return Math.max(0, BPM_MASTERY_THRESHOLD - progress.bpmMastery);
 }
 
 // ============================================
-// LESSON STRUCTURE
+// EXPANDED LEVEL STRUCTURE
 // ============================================
-// Each level focuses on specific skills
-// Sub-levels provide gentle incremental progression
+// Levels 1-7: C major foundation
+// Level 8+: One new key per level, resetting to basics each time
 //
-// Level 1: Middle C position (C-G), whole notes only
+// LEVEL 1: Middle C position (C-G), whole notes only
 //   1a: Just C and G (two notes)
-//   1b: Add E (three notes)
-//   1c: Add D and F (five notes)
+//   1b: Add E (three notes - C major triad)
+//   1c: Add D and F (five-finger position)
 //   1d: All notes C-G with focus on stepwise motion
 //
-// Level 2: Half notes introduction
+// LEVEL 2: Half notes introduction
 //   2a: Half notes only, C and G
 //   2b: Half notes, C-E-G (triad outline)
 //   2c: Mix of whole and half notes
 //   2d: Longer phrases with whole/half
 //
-// Level 3: Quarter notes introduction
+// LEVEL 3: Quarter notes introduction
 //   3a: Quarter notes in simple patterns (stepwise)
 //   3b: Quarter notes with small skips
 //   3c: Mix of quarter and half notes
 //   3d: Full rhythmic variety (whole, half, quarter)
 //
-// Level 4: Rests introduction
+// LEVEL 4: Rests introduction
 //   4a: Quarter rests only
 //   4b: Half rests
 //   4c: Mix of rest types
 //   4d: Musical phrases with rests
 //
-// Level 5: Accidentals (sharps/flats)
-//   5a: F# only (leading tone)
-//   5b: Bb only (subdominant)
-//   5c: Common accidentals
-//   5d: Chromatic neighbor tones
+// LEVEL 5: Accidentals (chromatic notes, still in C)
+//   5a: F# only (leading tone to G)
+//   5b: Bb only (common chromatic note)
+//   5c: Both F# and Bb
+//   5d: All common chromatic alterations
 //
-// Level 6: Left hand focus
+// LEVEL 6: Left hand focus (still C major)
 //   6a: Bass clef reading, C-G
 //   6b: Longer bass patterns
 //   6c: Both hands with simple coordination
 //   6d: Hands together practice
 //
-// Level 7: Eighth notes
+// LEVEL 7: Eighth notes (still C major)
 //   7a: Paired eighths on beats
 //   7b: Eighth note patterns
 //   7c: Mix with quarters
 //   7d: Syncopation introduction
 //
-// Level 8+: Advanced concepts (time signatures, keys)
+// === NEW KEY LEVELS (each resets to basics) ===
+//
+// LEVEL 8: G MAJOR (1 sharp - F#)
+//   8a: G major scale, WHOLE NOTES only, stepwise
+//   8b: G major, half notes
+//   8c: G major, quarter notes
+//   8d: G major, full rhythmic variety
+//
+// LEVEL 9: F MAJOR (1 flat - Bb)
+//   9a: F major scale, whole notes only
+//   9b: F major, half notes
+//   9c: F major, quarter notes
+//   9d: F major, full rhythmic variety
+//
+// LEVEL 10: D MAJOR (2 sharps - F#, C#)
+//   10a: D major scale, whole notes only
+//   10b: D major, half notes
+//   10c: D major, quarter notes
+//   10d: D major, full rhythmic variety
+//
+// LEVEL 11: Bb MAJOR (2 flats - Bb, Eb)
+//   11a: Bb major scale, whole notes only
+//   11b: Bb major, half notes
+//   11c: Bb major, quarter notes
+//   11d: Bb major, full rhythmic variety
+//
+// LEVEL 12: A MAJOR (3 sharps)
+// LEVEL 13: Eb MAJOR (3 flats)
+// LEVEL 14: E MAJOR (4 sharps)
+// LEVEL 15: Ab MAJOR (4 flats)
+// ... and so on
 
 interface NoteData {
   step: string;
@@ -222,61 +320,94 @@ const classicalPatterns = [
 ];
 
 // ============================================
-// LESSON DESCRIPTIONS
+// SCALES AND KEYS (Circle of Fifths)
 // ============================================
-const lessonDescriptions: Record<string, string> = {
-  '1a': 'C and G only - whole notes',
-  '1b': 'C, E, and G - whole notes',
-  '1c': 'C through G - whole notes',
-  '1d': 'Stepwise melodies - whole notes',
-  '2a': 'Half notes - C and G',
-  '2b': 'Half notes - C, E, G triad',
-  '2c': 'Mixing whole and half notes',
-  '2d': 'Longer phrases',
-  '3a': 'Quarter notes - stepwise',
-  '3b': 'Quarter notes - with skips',
-  '3c': 'Quarter and half notes mixed',
-  '3d': 'Full rhythmic variety',
-  '4a': 'Quarter rests',
-  '4b': 'Half rests',
-  '4c': 'Mixed rests',
-  '4d': 'Musical phrasing with rests',
-  '5a': 'Introducing F#',
-  '5b': 'Introducing Bb',
-  '5c': 'Common accidentals',
-  '5d': 'Chromatic neighbor tones',
-  '6a': 'Bass clef reading',
-  '6b': 'Bass patterns',
-  '6c': 'Simple coordination',
-  '6d': 'Hands together',
-  '7a': 'Paired eighth notes',
-  '7b': 'Eighth note patterns',
-  '7c': 'Mixing eighths and quarters',
-  '7d': 'Syncopation basics',
-  '8a': '3/4 time signature',
-  '8b': '2/4 time signature',
-  '8c': 'G major key',
-  '8d': 'F major key',
-  '9a': 'D major key',
-  '9b': 'Wider intervals',
-  '9c': 'Complex rhythms',
-  '9d': 'Performance preparation',
-  '10a': 'Full complexity',
-  '10b': 'Concert pieces',
-  '10c': 'Sight reading mastery',
-  '10d': 'Advanced musicianship',
+interface KeyInfo {
+  name: string;
+  fifths: number; // Key signature (positive = sharps, negative = flats)
+  scale: string[];
+}
+
+const keys: Record<string, KeyInfo> = {
+  C: { name: 'C major', fifths: 0, scale: ['C', 'D', 'E', 'F', 'G', 'A', 'B'] },
+  G: { name: 'G major', fifths: 1, scale: ['G', 'A', 'B', 'C', 'D', 'E', 'F#'] },
+  F: { name: 'F major', fifths: -1, scale: ['F', 'G', 'A', 'Bb', 'C', 'D', 'E'] },
+  D: { name: 'D major', fifths: 2, scale: ['D', 'E', 'F#', 'G', 'A', 'B', 'C#'] },
+  Bb: { name: 'Bb major', fifths: -2, scale: ['Bb', 'C', 'D', 'Eb', 'F', 'G', 'A'] },
+  A: { name: 'A major', fifths: 3, scale: ['A', 'B', 'C#', 'D', 'E', 'F#', 'G#'] },
+  Eb: { name: 'Eb major', fifths: -3, scale: ['Eb', 'F', 'G', 'Ab', 'Bb', 'C', 'D'] },
+  E: { name: 'E major', fifths: 4, scale: ['E', 'F#', 'G#', 'A', 'B', 'C#', 'D#'] },
+  Ab: { name: 'Ab major', fifths: -4, scale: ['Ab', 'Bb', 'C', 'Db', 'Eb', 'F', 'G'] },
+  B: { name: 'B major', fifths: 5, scale: ['B', 'C#', 'D#', 'E', 'F#', 'G#', 'A#'] },
+  Db: { name: 'Db major', fifths: -5, scale: ['Db', 'Eb', 'F', 'Gb', 'Ab', 'Bb', 'C'] },
 };
 
+// Order of key introduction (alternating sharps and flats)
+const keyProgression = ['C', 'G', 'F', 'D', 'Bb', 'A', 'Eb', 'E', 'Ab', 'B', 'Db'];
+
+function getKeyForLevel(level: number): KeyInfo {
+  if (level <= 7) {
+    return keys['C'];
+  }
+  // Level 8 = G, Level 9 = F, Level 10 = D, etc.
+  const keyIndex = Math.min(level - 7, keyProgression.length - 1);
+  return keys[keyProgression[keyIndex]];
+}
+
 // ============================================
-// SCALES AND KEYS
+// LESSON DESCRIPTIONS
 // ============================================
-const scales: Record<string, string[]> = {
-  C: ['C', 'D', 'E', 'F', 'G', 'A', 'B'],
-  G: ['G', 'A', 'B', 'C', 'D', 'E', 'F#'],
-  F: ['F', 'G', 'A', 'Bb', 'C', 'D', 'E'],
-  D: ['D', 'E', 'F#', 'G', 'A', 'B', 'C#'],
-  Bb: ['Bb', 'C', 'D', 'Eb', 'F', 'G', 'A'],
-};
+function getLessonDescription(level: number, subLevel: number): string {
+  const subLabels = ['a', 'b', 'c', 'd'];
+  const sub = subLabels[subLevel];
+
+  // C major foundation levels (1-7)
+  const cMajorDescriptions: Record<string, string> = {
+    '1a': 'C and G only - whole notes',
+    '1b': 'C, E, and G - whole notes',
+    '1c': 'C through G - whole notes',
+    '1d': 'Stepwise melodies - whole notes',
+    '2a': 'Half notes - C and G',
+    '2b': 'Half notes - C, E, G triad',
+    '2c': 'Mixing whole and half notes',
+    '2d': 'Longer phrases',
+    '3a': 'Quarter notes - stepwise',
+    '3b': 'Quarter notes - with skips',
+    '3c': 'Quarter and half notes mixed',
+    '3d': 'Full rhythmic variety',
+    '4a': 'Quarter rests',
+    '4b': 'Half rests',
+    '4c': 'Mixed rests',
+    '4d': 'Musical phrasing with rests',
+    '5a': 'Introducing F#',
+    '5b': 'Introducing Bb',
+    '5c': 'F# and Bb together',
+    '5d': 'Chromatic neighbor tones',
+    '6a': 'Bass clef reading',
+    '6b': 'Bass patterns',
+    '6c': 'Simple coordination',
+    '6d': 'Hands together',
+    '7a': 'Paired eighth notes',
+    '7b': 'Eighth note patterns',
+    '7c': 'Mixing eighths and quarters',
+    '7d': 'Syncopation basics',
+  };
+
+  if (level <= 7) {
+    return cMajorDescriptions[`${level}${sub}`] || `Level ${level}${sub}`;
+  }
+
+  // New key levels (8+)
+  const keyInfo = getKeyForLevel(level);
+  const rhythmDescriptions = [
+    'whole notes - learn the key',
+    'half notes',
+    'quarter notes',
+    'full rhythmic variety',
+  ];
+
+  return `${keyInfo.name} - ${rhythmDescriptions[subLevel]}`;
+}
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -284,10 +415,11 @@ function pick<T>(arr: T[]): T {
 
 function scaleDegreeToNote(
   degree: number,
-  key: string,
+  keyName: string,
   baseOctave: number
 ): { step: string; alter: number; octave: number } {
-  const scale = scales[key] || scales['C'];
+  const keyInfo = keys[keyName] || keys['C'];
+  const scale = keyInfo.scale;
   const normalizedDegree = ((degree - 1) % 7 + 7) % 7;
   const octaveOffset = Math.floor((degree - 1) / 7);
   const noteName = scale[normalizedDegree];
@@ -308,16 +440,16 @@ interface LevelConfig {
   restProbability: number;
   accidentalProbability: number;
   maxInterval: number;
-  key: { name: string; fifths: number };
+  key: KeyInfo;
   timeSignature: { beats: number; beatType: number };
   noteRange: number[]; // Scale degrees to use
   patterns: number[][]; // Which melodic patterns to use
   includeLeftHand: boolean;
-  description: string;
+  suggestedBpm: number;
 }
 
 function getLevelConfig(level: number, subLevel: number): LevelConfig {
-  const key = getFullLevelString();
+  const keyInfo = getKeyForLevel(level);
 
   // Default configuration
   const config: LevelConfig = {
@@ -325,19 +457,23 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
     restProbability: 0,
     accidentalProbability: 0,
     maxInterval: 2,
-    key: { name: 'C', fifths: 0 },
+    key: keyInfo,
     timeSignature: { beats: 4, beatType: 4 },
     noteRange: [1, 3, 5],
     patterns: stepwisePatterns.slice(0, 3),
     includeLeftHand: level >= 6,
-    description: lessonDescriptions[key] || `Level ${level}${['a', 'b', 'c', 'd'][subLevel]}`,
+    suggestedBpm: getSuggestedBpm(level),
   };
 
-  // Level 1: Whole notes only, limited range
+  // ========================================
+  // C MAJOR FOUNDATION (Levels 1-7)
+  // ========================================
+
   if (level === 1) {
     config.durations = [4];
     config.restProbability = 0;
     config.maxInterval = 2;
+    config.suggestedBpm = 30;
 
     switch (subLevel) {
       case 0: // 1a: Just C and G
@@ -357,11 +493,9 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
         config.patterns = stepwisePatterns;
         break;
     }
-  }
-
-  // Level 2: Half notes
-  else if (level === 2) {
+  } else if (level === 2) {
     config.noteRange = [1, 2, 3, 4, 5];
+    config.suggestedBpm = 30;
 
     switch (subLevel) {
       case 0:
@@ -382,11 +516,9 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
         config.patterns = [...stepwisePatterns, ...triadicPatterns];
         break;
     }
-  }
-
-  // Level 3: Quarter notes
-  else if (level === 3) {
+  } else if (level === 3) {
     config.noteRange = [1, 2, 3, 4, 5, 6];
+    config.suggestedBpm = 40;
 
     switch (subLevel) {
       case 0:
@@ -408,12 +540,10 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
         config.patterns = [...folkPatterns.slice(0, 5)];
         break;
     }
-  }
-
-  // Level 4: Rests
-  else if (level === 4) {
+  } else if (level === 4) {
     config.noteRange = [1, 2, 3, 4, 5, 6];
     config.durations = [1, 2];
+    config.suggestedBpm = 40;
 
     switch (subLevel) {
       case 0:
@@ -436,12 +566,10 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
         config.patterns = folkPatterns;
         break;
     }
-  }
-
-  // Level 5: Accidentals
-  else if (level === 5) {
+  } else if (level === 5) {
     config.noteRange = [1, 2, 3, 4, 5, 6, 7];
     config.durations = [2, 1];
+    config.suggestedBpm = 50;
 
     switch (subLevel) {
       case 0:
@@ -464,13 +592,11 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
         config.patterns = [...folkPatterns, ...classicalPatterns.slice(0, 3)];
         break;
     }
-  }
-
-  // Level 6: Left hand and coordination
-  else if (level === 6) {
+  } else if (level === 6) {
     config.noteRange = [1, 2, 3, 4, 5, 6, 7];
     config.durations = [2, 1];
     config.includeLeftHand = true;
+    config.suggestedBpm = 50;
 
     switch (subLevel) {
       case 0:
@@ -486,12 +612,10 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
         config.patterns = [...folkPatterns, ...classicalPatterns];
         break;
     }
-  }
-
-  // Level 7: Eighth notes
-  else if (level === 7) {
+  } else if (level === 7) {
     config.noteRange = [1, 2, 3, 4, 5, 6, 7];
     config.includeLeftHand = true;
+    config.suggestedBpm = 60;
 
     switch (subLevel) {
       case 0:
@@ -515,60 +639,51 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
     }
   }
 
-  // Level 8: Time signatures and new keys
-  else if (level === 8) {
-    config.noteRange = [1, 2, 3, 4, 5, 6, 7, 8];
-    config.durations = [0.5, 1, 2];
-    config.includeLeftHand = true;
-    config.restProbability = 0.1;
+  // ========================================
+  // NEW KEY LEVELS (Level 8+)
+  // Each key resets to basics: whole notes → half → quarter → full
+  // ========================================
 
+  else if (level >= 8) {
+    config.key = keyInfo;
+    config.includeLeftHand = true;
+    config.noteRange = [1, 2, 3, 4, 5, 6, 7, 8]; // Full octave in new key
+
+    // Sub-level determines rhythmic complexity (RESET for each new key!)
     switch (subLevel) {
-      case 0:
-        config.timeSignature = { beats: 3, beatType: 4 };
-        config.patterns = folkPatterns;
+      case 0: // xa: Whole notes - learn the key
+        config.durations = [4];
+        config.restProbability = 0;
+        config.patterns = stepwisePatterns;
+        config.suggestedBpm = 35;
         break;
-      case 1:
-        config.timeSignature = { beats: 2, beatType: 4 };
+      case 1: // xb: Half notes
+        config.durations = [2];
+        config.restProbability = 0;
+        config.patterns = [...stepwisePatterns, ...triadicPatterns];
+        config.suggestedBpm = 40;
+        break;
+      case 2: // xc: Quarter notes
+        config.durations = [1, 2];
+        config.restProbability = 0.1;
+        config.patterns = [...folkPatterns.slice(0, 5), ...triadicPatterns];
+        config.suggestedBpm = 50;
+        break;
+      case 3: // xd: Full variety
+        config.durations = [0.5, 1, 2];
+        config.restProbability = 0.1;
         config.patterns = [...folkPatterns, ...classicalPatterns];
-        break;
-      case 2:
-        config.key = { name: 'G', fifths: 1 };
-        config.patterns = classicalPatterns;
-        break;
-      case 3:
-        config.key = { name: 'F', fifths: -1 };
-        config.patterns = [...folkPatterns, ...classicalPatterns];
+        config.suggestedBpm = 60;
         break;
     }
-  }
 
-  // Levels 9-10: Advanced
-  else {
-    config.noteRange = [1, 2, 3, 4, 5, 6, 7, 8];
-    config.durations = [0.5, 1, 2, 4];
-    config.includeLeftHand = true;
-    config.restProbability = 0.12;
-    config.accidentalProbability = 0.1;
-    config.maxInterval = 5;
-
-    const keys = [
-      { name: 'C', fifths: 0 },
-      { name: 'G', fifths: 1 },
-      { name: 'F', fifths: -1 },
-      { name: 'D', fifths: 2 },
-    ];
-
-    if (level >= 10) {
-      keys.push({ name: 'Bb', fifths: -2 });
+    // Higher key levels can be slightly more challenging
+    if (level >= 12) {
+      config.maxInterval = 4;
     }
-
-    config.key = pick(keys);
-    config.timeSignature = pick([
-      { beats: 4, beatType: 4 },
-      { beats: 3, beatType: 4 },
-      { beats: 2, beatType: 4 },
-    ]);
-    config.patterns = [...folkPatterns, ...classicalPatterns];
+    if (level >= 14) {
+      config.maxInterval = 5;
+    }
   }
 
   return config;
@@ -630,13 +745,13 @@ function generateMelody(
       const maxDegree = Math.max(...config.noteRange);
       degree = Math.max(minDegree, Math.min(maxDegree, degree));
 
-      // Apply accidental?
+      // Apply chromatic accidental? (only in levels that allow it)
       let extraAlter = 0;
       if (Math.random() < config.accidentalProbability) {
         extraAlter = pick([-1, 1]);
       }
 
-      const noteData = scaleDegreeToNote(degree, config.key.name, baseOctave);
+      const noteData = scaleDegreeToNote(degree, config.key.name.split(' ')[0], baseOctave);
       notes.push({
         ...noteData,
         alter: noteData.alter + extraAlter,
@@ -677,6 +792,8 @@ function generateBass(
   const bassDurations =
     progress.level <= 4 ? [beatsPerMeasure] : progress.level <= 6 ? [2, 1] : config.durations;
 
+  const keyRoot = config.key.name.split(' ')[0];
+
   for (let m = 0; m < numMeasures; m++) {
     const notes: NoteData[] = [];
     let remainingBeats = beatsPerMeasure;
@@ -700,7 +817,7 @@ function generateBass(
       const degree = pattern[patternIdx % pattern.length];
       patternIdx++;
 
-      const noteData = scaleDegreeToNote(degree, config.key.name, baseOctave);
+      const noteData = scaleDegreeToNote(degree, keyRoot, baseOctave);
       notes.push({
         ...noteData,
         duration: dur,
@@ -805,8 +922,10 @@ export function generateMusicXML(): GeneratedMusic {
     timeSignature: config.timeSignature,
     level: progress.level,
     subLevel: progress.subLevel,
-    lessonDescription: config.description,
+    lessonDescription: getLessonDescription(progress.level, progress.subLevel),
     numMeasures,
+    suggestedBpm: config.suggestedBpm,
+    keyName: config.key.name,
   };
 }
 

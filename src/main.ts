@@ -11,6 +11,11 @@ import {
   getRepetitionsRemaining,
   setMobileMode,
   isMobileMode,
+  getCurrentBpm,
+  shouldIncreaseTempo,
+  increaseTempo,
+  setBpm,
+  getBpmMasteryRemaining,
 } from './musicGenerator';
 
 // State
@@ -228,10 +233,22 @@ function playMetronomeClick(subdivisionInBeat: number) {
 
 function generateAndRender() {
   updateVerovioOptions();
-  const { xml, timeSignature, lessonDescription } = generateMusicXML();
+  const { xml, timeSignature, lessonDescription, suggestedBpm } = generateMusicXML();
   currentTimeSig = timeSignature;
   currentPieceXml = xml;
   currentLessonDescription = lessonDescription;
+
+  // Sync BPM with lesson suggestion on level change
+  const bpmInput = document.getElementById('bpm') as HTMLInputElement;
+  if (bpmInput && suggestedBpm) {
+    const currentBpm = getCurrentBpm();
+    // Only update if this is a new level (BPM resets)
+    if (currentBpm === suggestedBpm) {
+      bpm = suggestedBpm;
+      bpmInput.value = String(suggestedBpm);
+      setBpm(suggestedBpm);
+    }
+  }
 
   // If hands separate mode, start with right hand only
   if (handsSeparate) {
@@ -296,11 +313,24 @@ function updateLevelDisplay() {
 
   if (progressInfo) {
     const remaining = getRepetitionsRemaining();
+    const tempoMasteryRemaining = getBpmMasteryRemaining();
+
+    // Show both note mastery and tempo mastery progress
+    let progressText = '';
     if (remaining > 0) {
-      progressInfo.textContent = `${remaining} more to advance`;
-    } else {
-      progressInfo.textContent = '';
+      progressText = `${remaining} more to advance`;
     }
+
+    // Show tempo increase suggestion if mastered at current tempo
+    if (shouldIncreaseTempo()) {
+      progressText += progressText ? ' | ' : '';
+      progressText += 'Ready to increase tempo!';
+    } else if (tempoMasteryRemaining > 0 && remaining === 0) {
+      progressText += progressText ? ' | ' : '';
+      progressText += `${tempoMasteryRemaining} at tempo`;
+    }
+
+    progressInfo.textContent = progressText;
   }
 }
 
@@ -628,6 +658,7 @@ function setupControls() {
 
   bpmInput.addEventListener('change', () => {
     bpm = parseInt(bpmInput.value) || 30;
+    setBpm(bpm); // Sync with musicGenerator's tempo tracking
   });
 
   metronomeCheckbox.addEventListener('change', () => {
@@ -667,11 +698,21 @@ function setupControls() {
   });
 
   levelUpBtn?.addEventListener('click', () => {
-    incrementLevel();
-    if (!isPlaying) {
-      generateAndRender();
+    // If tempo mastery achieved, increase tempo instead of level
+    if (shouldIncreaseTempo()) {
+      increaseTempo();
+      const newBpm = getCurrentBpm();
+      bpm = newBpm;
+      const bpmInputEl = document.getElementById('bpm') as HTMLInputElement;
+      if (bpmInputEl) bpmInputEl.value = String(newBpm);
+      updateLevelDisplay();
+    } else {
+      incrementLevel();
+      if (!isPlaying) {
+        generateAndRender();
+      }
+      updateLevelDisplay();
     }
-    updateLevelDisplay();
   });
 
   levelDownBtn?.addEventListener('click', () => {
