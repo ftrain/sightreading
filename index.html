@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sight Reading Practice</title>
+    <script type="module" crossorigin src="/sightreading/assets/index-DYZZDUn7.js"></script>
+    <link rel="stylesheet" crossorigin href="/sightreading/assets/index-CbbDm0Bn.css">
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>Sight Reading</h1>
+        <span id="levelDisplay">Level 1</span>
+      </header>
+
+      <div id="controls">
+        <div class="control-group">
+          <label for="bpm">BPM</label>
+          <input type="number" id="bpm" value="30" min="20" max="200" step="5" />
+        </div>
+
+        <div class="control-group">
+          <label for="metronome">Metronome</label>
+          <input type="checkbox" id="metronome" checked />
+        </div>
+
+        <div class="control-group">
+          <label for="metronomeVolume">Vol</label>
+          <input type="range" id="metronomeVolume" min="0" max="100" value="50" />
+        </div>
+
+        <div class="control-group">
+          <label for="handsSeparate">Hands Separate</label>
+          <input type="checkbox" id="handsSeparate" checked />
+        </div>
+
+        <div class="control-group">
+          <label for="midiInput">MIDI</label>
+          <select id="midiInput">
+            <option value="">No MIDI Device</option>
+          </select>
+        </div>
+
+        <div class="control-group level-controls">
+          <button id="levelDown" class="level-btn">−</button>
+          <button id="levelUp" class="level-btn">+</button>
+        </div>
+
+        <button id="playPause">Start</button>
+      </div>
+
+      <div id="countoff"></div>
+      <div id="notation"></div>
+    </div>
+  </body>
+</html>
