@@ -2,7 +2,16 @@ import './style.css';
 import createVerovioModule from 'verovio/wasm';
 import { VerovioToolkit } from 'verovio/esm';
 import * as Tone from 'tone';
-import { generateMusicXML, getLevel, setLevel, incrementLevel } from './musicGenerator';
+import {
+  generateMusicXML,
+  getLevel,
+  setLevel,
+  incrementLevel,
+  getFullLevelString,
+  getRepetitionsRemaining,
+  setMobileMode,
+  isMobileMode,
+} from './musicGenerator';
 
 // State
 let toolkit: VerovioToolkit;
@@ -48,10 +57,38 @@ let currentPieceXml: string = '';
 // Performance tracking - did user play all notes correctly?
 let hadMistake = false;
 
+// Current lesson info
+let currentLessonDescription = '';
+
+// Detect mobile device and orientation
+function detectMobile(): boolean {
+  // Check for touch device OR narrow viewport in landscape
+  const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  const isNarrowViewport = window.innerWidth < 1024;
+  const isLandscape = window.innerWidth > window.innerHeight;
+
+  // Mobile mode: touch device, or narrow landscape viewport
+  return isTouchDevice || (isNarrowViewport && isLandscape);
+}
+
+function updateMobileMode() {
+  const wasMobile = isMobileMode();
+  const nowMobile = detectMobile();
+
+  if (wasMobile !== nowMobile) {
+    setMobileMode(nowMobile);
+    // Update UI to reflect mobile mode
+    document.body.classList.toggle('mobile-mode', nowMobile);
+  }
+}
+
 async function init() {
   // Initialize Verovio
   const VerovioModule = await createVerovioModule();
   toolkit = new VerovioToolkit(VerovioModule);
+
+  // Detect initial mobile state
+  updateMobileMode();
 
   updateVerovioOptions();
 
@@ -66,21 +103,36 @@ async function init() {
 
   // Handle window resize
   window.addEventListener('resize', () => {
+    updateMobileMode();
     updateVerovioOptions();
     if (!isPlaying) {
       regenerateCurrentMusic();
     }
   });
+
+  // Handle orientation change on mobile
+  window.addEventListener('orientationchange', () => {
+    setTimeout(() => {
+      updateMobileMode();
+      updateVerovioOptions();
+      if (!isPlaying) {
+        regenerateCurrentMusic();
+      }
+    }, 100);
+  });
 }
 
 function updateVerovioOptions() {
   const container = document.getElementById('notation')!;
-  const width = Math.max(800, container.clientWidth - 80);
+  const width = Math.max(600, container.clientWidth - 40);
+
+  // Adjust scale based on mobile mode
+  const scale = isMobileMode() ? 45 : 50;
 
   toolkit.setOptions({
     pageWidth: width,
-    pageHeight: 800,
-    scale: 50,
+    pageHeight: isMobileMode() ? 400 : 800,
+    scale: scale,
     adjustPageHeight: true,
     footer: 'none',
     header: 'none',
@@ -89,12 +141,14 @@ function updateVerovioOptions() {
 }
 
 function regenerateCurrentMusic() {
-  const { xml } = generateMusicXML();
+  const { xml, lessonDescription } = generateMusicXML();
+  currentLessonDescription = lessonDescription;
   toolkit.loadData(xml);
   const svg = toolkit.renderToSVG(1);
   const notation = document.getElementById('notation')!;
   notation.innerHTML = svg;
   groupNotesByPosition();
+  updateLevelDisplay();
 }
 
 async function initAudio() {
@@ -174,9 +228,10 @@ function playMetronomeClick(subdivisionInBeat: number) {
 
 function generateAndRender() {
   updateVerovioOptions();
-  const { xml, timeSignature, level } = generateMusicXML();
+  const { xml, timeSignature, lessonDescription } = generateMusicXML();
   currentTimeSig = timeSignature;
   currentPieceXml = xml;
+  currentLessonDescription = lessonDescription;
 
   // If hands separate mode, start with right hand only
   if (handsSeparate) {
@@ -188,7 +243,7 @@ function generateAndRender() {
   renderCurrentHand();
 
   // Update level display
-  updateLevelDisplay(level);
+  updateLevelDisplay();
 }
 
 function renderCurrentHand() {
@@ -208,9 +263,10 @@ function renderCurrentHand() {
 function updateHandIndicator() {
   const levelDisplay = document.getElementById('levelDisplay');
   if (levelDisplay) {
-    const level = `Level ${getLevel()}`;
+    const level = `Level ${getFullLevelString()}`;
     if (handsSeparate) {
-      const modeLabel = currentHandMode === 'rh' ? 'RH' : currentHandMode === 'lh' ? 'LH' : 'Both';
+      const modeLabel =
+        currentHandMode === 'rh' ? 'RH' : currentHandMode === 'lh' ? 'LH' : 'Both';
       levelDisplay.textContent = `${level} (${modeLabel})`;
     } else {
       levelDisplay.textContent = level;
@@ -218,14 +274,32 @@ function updateHandIndicator() {
   }
 }
 
-function updateLevelDisplay(level: number) {
+function updateLevelDisplay() {
   const levelDisplay = document.getElementById('levelDisplay');
+  const lessonInfo = document.getElementById('lessonInfo');
+  const progressInfo = document.getElementById('progressInfo');
+
   if (levelDisplay) {
+    const levelText = `Level ${getFullLevelString()}`;
     if (handsSeparate) {
-      const modeLabel = currentHandMode === 'rh' ? 'RH' : currentHandMode === 'lh' ? 'LH' : 'Both';
-      levelDisplay.textContent = `Level ${level} (${modeLabel})`;
+      const modeLabel =
+        currentHandMode === 'rh' ? 'RH' : currentHandMode === 'lh' ? 'LH' : 'Both';
+      levelDisplay.textContent = `${levelText} (${modeLabel})`;
     } else {
-      levelDisplay.textContent = `Level ${level}`;
+      levelDisplay.textContent = levelText;
+    }
+  }
+
+  if (lessonInfo) {
+    lessonInfo.textContent = currentLessonDescription;
+  }
+
+  if (progressInfo) {
+    const remaining = getRepetitionsRemaining();
+    if (remaining > 0) {
+      progressInfo.textContent = `${remaining} more to advance`;
+    } else {
+      progressInfo.textContent = '';
     }
   }
 }
@@ -237,7 +311,8 @@ function groupNotesByPosition() {
 
   // Determine which staff to include based on current hand mode
   // RH = staff 1 (treble), LH = staff 2 (bass), both = null (include all)
-  const staffToInclude = currentHandMode === 'rh' ? 1 : currentHandMode === 'lh' ? 2 : null;
+  const staffToInclude =
+    currentHandMode === 'rh' ? 1 : currentHandMode === 'lh' ? 2 : null;
 
   // First, collect all elements with their positions
   interface NotePosition {
@@ -274,7 +349,10 @@ function groupNotesByPosition() {
     // Determine which system this note is in
     let systemIndex = 0;
     for (let i = 0; i < systemYRanges.length; i++) {
-      if (relativeY >= systemYRanges[i].top && relativeY <= systemYRanges[i].bottom) {
+      if (
+        relativeY >= systemYRanges[i].top &&
+        relativeY <= systemYRanges[i].bottom
+      ) {
         systemIndex = i;
         break;
       }
@@ -287,12 +365,17 @@ function groupNotesByPosition() {
     // Determine staff within the system (1 = treble/top, 2 = bass/bottom)
     let noteStaff: number | null = null;
     if (systemYRanges[systemIndex]) {
-      const systemMidpoint = (systemYRanges[systemIndex].top + systemYRanges[systemIndex].bottom) / 2;
+      const systemMidpoint =
+        (systemYRanges[systemIndex].top + systemYRanges[systemIndex].bottom) / 2;
       noteStaff = relativeY < systemMidpoint ? 1 : 2;
     }
 
     // If in single-hand mode, only include notes from that staff
-    if (staffToInclude !== null && noteStaff !== null && noteStaff !== staffToInclude) {
+    if (
+      staffToInclude !== null &&
+      noteStaff !== null &&
+      noteStaff !== staffToInclude
+    ) {
       return;
     }
 
@@ -349,7 +432,9 @@ function groupNotesByPosition() {
     }
   });
 
-  console.log(`groupNotesByPosition: mode=${currentHandMode}, beatGroups.length=${beatGroups.length}, systems=${systemYRanges.length}`);
+  console.log(
+    `groupNotesByPosition: mode=${currentHandMode}, beatGroups.length=${beatGroups.length}, systems=${systemYRanges.length}`
+  );
 }
 
 function getDurationFromElement(el: SVGElement): number {
@@ -424,7 +509,20 @@ function updateMidiDevices(midiAccess: MIDIAccess) {
 }
 
 function midiNoteToName(noteNum: number): string {
-  const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const notes = [
+    'C',
+    'C#',
+    'D',
+    'D#',
+    'E',
+    'F',
+    'F#',
+    'G',
+    'G#',
+    'A',
+    'A#',
+    'B',
+  ];
   const octave = Math.floor(noteNum / 12) - 1;
   const note = notes[noteNum % 12];
   return `${note}${octave}`;
@@ -521,7 +619,9 @@ function getNoteDataFromElement(el: SVGElement): string | null {
 function setupControls() {
   const playPauseBtn = document.getElementById('playPause')!;
   const bpmInput = document.getElementById('bpm') as HTMLInputElement;
-  const metronomeCheckbox = document.getElementById('metronome') as HTMLInputElement;
+  const metronomeCheckbox = document.getElementById(
+    'metronome'
+  ) as HTMLInputElement;
   const midiSelect = document.getElementById('midiInput') as HTMLSelectElement;
   const levelUpBtn = document.getElementById('levelUp');
   const levelDownBtn = document.getElementById('levelDown');
@@ -534,7 +634,9 @@ function setupControls() {
     metronomeEnabled = metronomeCheckbox.checked;
   });
 
-  const metronomeVolumeSlider = document.getElementById('metronomeVolume') as HTMLInputElement;
+  const metronomeVolumeSlider = document.getElementById(
+    'metronomeVolume'
+  ) as HTMLInputElement;
   if (metronomeVolumeSlider) {
     metronomeVolumeSlider.addEventListener('input', () => {
       // Slider is 0-100, map to -40dB to 0dB
@@ -543,7 +645,9 @@ function setupControls() {
     });
   }
 
-  const handsSeparateCheckbox = document.getElementById('handsSeparate') as HTMLInputElement;
+  const handsSeparateCheckbox = document.getElementById(
+    'handsSeparate'
+  ) as HTMLInputElement;
   if (handsSeparateCheckbox) {
     handsSeparateCheckbox.addEventListener('change', () => {
       handsSeparate = handsSeparateCheckbox.checked;
@@ -567,7 +671,7 @@ function setupControls() {
     if (!isPlaying) {
       generateAndRender();
     }
-    updateLevelDisplay(getLevel());
+    updateLevelDisplay();
   });
 
   levelDownBtn?.addEventListener('click', () => {
@@ -577,7 +681,7 @@ function setupControls() {
       if (!isPlaying) {
         generateAndRender();
       }
-      updateLevelDisplay(getLevel());
+      updateLevelDisplay();
     }
   });
 
@@ -691,7 +795,9 @@ function scheduleMusic(countoffTotal: number) {
   }, `0:${endBeat}:${endSub}`);
   scheduledEvents.push(endEventId);
 
-  console.log(`scheduleMusic: countoff=${countoffTotal}, totalDuration=${totalDuration}, beatGroups=${beatGroups.length}, endTime=${endBeat}:${endSub}`);
+  console.log(
+    `scheduleMusic: countoff=${countoffTotal}, totalDuration=${totalDuration}, beatGroups=${beatGroups.length}, endTime=${endBeat}:${endSub}`
+  );
 }
 
 function onPieceComplete() {
@@ -747,11 +853,11 @@ function onPieceComplete() {
   } else {
     // Same piece, same or different hand - re-render and clear visual state
     renderCurrentHand();
-    updateLevelDisplay(getLevel());
+    updateLevelDisplay();
 
     // Clear any correct/wrong/past markers from previous attempt
-    const notation = document.getElementById('notation')!;
-    notation.querySelectorAll('.note, .rest').forEach((el) => {
+    const notationEl = document.getElementById('notation')!;
+    notationEl.querySelectorAll('.note, .rest').forEach((el) => {
       el.classList.remove('correct', 'wrong', 'past');
       el.removeAttribute('data-early-correct');
     });

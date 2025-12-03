@@ -48,6 +48,13 @@ header h1 {
   gap: 1rem;
 }
 
+.level-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
 #levelDisplay {
   font-size: 1.25rem;
   font-weight: 600;
@@ -56,6 +63,18 @@ header h1 {
   background: rgba(233, 69, 96, 0.1);
   border-radius: 20px;
   border: 1px solid var(--primary);
+}
+
+#lessonInfo {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+#progressInfo {
+  font-size: 0.7rem;
+  color: var(--correct);
+  text-align: right;
 }
 
 .github-link {
@@ -110,7 +129,7 @@ header h1 {
   background: #444;
 }
 
-input[type="number"] {
+input[type='number'] {
   background: var(--bg);
   color: var(--text);
   border: 1px solid #333;
@@ -121,19 +140,19 @@ input[type="number"] {
   text-align: center;
 }
 
-input[type="number"]:focus {
+input[type='number']:focus {
   outline: none;
   border-color: var(--primary);
 }
 
-input[type="checkbox"] {
+input[type='checkbox'] {
   width: 18px;
   height: 18px;
   accent-color: var(--primary);
   cursor: pointer;
 }
 
-input[type="range"] {
+input[type='range'] {
   width: 80px;
   height: 6px;
   accent-color: var(--primary);
@@ -278,26 +297,383 @@ button.playing {
   font-size: 1.5rem;
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  header {
-    padding: 0.75rem 1rem;
-  }
+/* MIDI control group - for hiding on mobile */
+.midi-control-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
 
-  header h1 {
-    font-size: 1.25rem;
+/* ============================================
+   RESPONSIVE DESIGN - TABLET
+   ============================================ */
+@media (max-width: 1024px) {
+  header {
+    padding: 0.75rem 1.5rem;
   }
 
   #controls {
-    padding: 0.75rem 1rem;
     gap: 1rem;
+    padding: 0.75rem 1.5rem;
+  }
+
+  /* Reduce MIDI prominence on tablet */
+  .midi-control-group {
+    order: 10; /* Push to end */
+  }
+
+  .midi-control-group select {
+    max-width: 140px;
+    font-size: 0.75rem;
+    padding: 0.4rem 0.6rem;
+  }
+}
+
+/* ============================================
+   RESPONSIVE DESIGN - MOBILE PORTRAIT
+   ============================================ */
+@media (max-width: 768px) {
+  header {
+    padding: 0.5rem 1rem;
+    flex-wrap: wrap;
+  }
+
+  header h1 {
+    font-size: 1.1rem;
+  }
+
+  .level-info {
+    flex-direction: row;
+    gap: 0.5rem;
+  }
+
+  #levelDisplay {
+    font-size: 1rem;
+    padding: 0.2rem 0.75rem;
+  }
+
+  #lessonInfo {
+    display: none; /* Hide on very small screens */
+  }
+
+  #controls {
+    padding: 0.5rem 1rem;
+    gap: 0.75rem;
+  }
+
+  .control-group label {
+    font-size: 0.65rem;
+  }
+
+  input[type='number'] {
+    width: 55px;
+    padding: 0.4rem;
+    font-size: 0.8rem;
+  }
+
+  input[type='range'] {
+    width: 60px;
+  }
+
+  button {
+    padding: 0.5rem 1.25rem;
+    font-size: 0.75rem;
+  }
+
+  .level-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 1.1rem;
   }
 
   #notation {
-    padding: 1rem;
+    padding: 0.75rem;
+  }
+
+  #notation svg {
+    padding: 0.75rem;
+    border-radius: 8px;
   }
 
   #countoff {
     font-size: 6rem;
   }
+
+  /* Hide MIDI controls on mobile portrait - MIDI keyboards are rare on phones */
+  .midi-control-group {
+    display: none;
+  }
+}
+
+/* ============================================
+   RESPONSIVE DESIGN - MOBILE LANDSCAPE (4-bar mode)
+   ============================================ */
+@media (max-width: 900px) and (orientation: landscape) {
+  #app {
+    min-height: 100vh;
+    max-height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    padding: 0.35rem 1rem;
+    min-height: auto;
+  }
+
+  header h1 {
+    font-size: 1rem;
+  }
+
+  .header-right {
+    gap: 0.5rem;
+  }
+
+  #levelDisplay {
+    font-size: 0.9rem;
+    padding: 0.15rem 0.6rem;
+  }
+
+  #lessonInfo,
+  #progressInfo {
+    font-size: 0.6rem;
+  }
+
+  .github-link svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  #controls {
+    padding: 0.35rem 1rem;
+    gap: 0.75rem;
+    min-height: auto;
+  }
+
+  .control-group {
+    gap: 0.35rem;
+  }
+
+  .control-group label {
+    font-size: 0.6rem;
+  }
+
+  input[type='number'] {
+    width: 50px;
+    padding: 0.25rem;
+    font-size: 0.75rem;
+  }
+
+  input[type='checkbox'] {
+    width: 14px;
+    height: 14px;
+  }
+
+  input[type='range'] {
+    width: 50px;
+    height: 4px;
+  }
+
+  select {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.7rem;
+  }
+
+  button {
+    padding: 0.35rem 1rem;
+    font-size: 0.7rem;
+  }
+
+  .level-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 1rem;
+  }
+
+  #countoff {
+    font-size: 4rem;
+  }
+
+  /* Notation takes remaining space in landscape */
+  #notation {
+    flex: 1;
+    padding: 0.5rem;
+    align-items: flex-start;
+    overflow-y: hidden;
+  }
+
+  #notation svg {
+    padding: 0.5rem;
+    border-radius: 6px;
+    max-height: calc(100vh - 100px);
+  }
+
+  /* MIDI controls hidden in mobile landscape */
+  .midi-control-group {
+    display: none;
+  }
+
+  /* Volume slider hidden in compact landscape */
+  .volume-control-group {
+    display: none;
+  }
+}
+
+/* ============================================
+   MOBILE MODE (via JS class)
+   Triggered on touch devices or narrow landscape
+   ============================================ */
+body.mobile-mode {
+  /* Ensure mobile optimizations even when media queries don't match */
+}
+
+body.mobile-mode .midi-control-group {
+  display: none !important;
+}
+
+body.mobile-mode #notation svg {
+  /* Optimized for 4-bar display */
+  padding: 0.5rem;
+}
+
+/* ============================================
+   VERY SMALL DEVICES (phones < 400px)
+   ============================================ */
+@media (max-width: 400px) {
+  header h1 {
+    font-size: 1rem;
+  }
+
+  #levelDisplay {
+    font-size: 0.85rem;
+  }
+
+  #controls {
+    gap: 0.5rem;
+  }
+
+  .control-group {
+    gap: 0.25rem;
+  }
+
+  /* Hide less essential controls on tiny screens */
+  .hands-separate-group {
+    display: none;
+  }
+}
+
+/* ============================================
+   TOUCH DEVICE OPTIMIZATIONS
+   ============================================ */
+@media (hover: none) and (pointer: coarse) {
+  /* Larger touch targets */
+  button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .level-btn {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  input[type='checkbox'] {
+    min-width: 22px;
+    min-height: 22px;
+  }
+
+  select {
+    min-height: 44px;
+  }
+
+  /* Remove hover effects on touch */
+  button:hover {
+    transform: none;
+    filter: none;
+  }
+
+  button:active {
+    filter: brightness(0.9);
+    transform: scale(0.98);
+  }
+}
+
+/* ============================================
+   HIGH DPI / RETINA DISPLAYS
+   ============================================ */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  #notation svg {
+    /* Ensure crisp rendering on high DPI */
+    image-rendering: crisp-edges;
+  }
+}
+
+/* ============================================
+   PRINT STYLES
+   ============================================ */
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+
+  header,
+  #controls,
+  #countoff {
+    display: none;
+  }
+
+  #notation {
+    padding: 0;
+    background: white;
+  }
+
+  #notation svg {
+    box-shadow: none;
+    border: 1px solid #ccc;
+  }
+}
+
+/* ============================================
+   REDUCED MOTION PREFERENCE
+   ============================================ */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ============================================
+   DARK MODE PREFERENCE (already dark, but explicit)
+   ============================================ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f0f1a;
+    --surface: #1a1a2e;
+  }
+}
+
+/* ============================================
+   ACCESSIBILITY - FOCUS STATES
+   ============================================ */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
