@@ -1,0 +1,286 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #0f0f1a;
+  --surface: #1a1a2e;
+  --primary: #e94560;
+  --correct: #00d4aa;
+  --wrong: #ff4757;
+  --text: #eee;
+  --text-muted: #888;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+header {
+  padding: 1rem 2rem;
+  background: var(--surface);
+  border-bottom: 2px solid var(--primary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+#levelDisplay {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--primary);
+  padding: 0.25rem 1rem;
+  background: rgba(233, 69, 96, 0.1);
+  border-radius: 20px;
+  border: 1px solid var(--primary);
+}
+
+#controls {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1rem 2rem;
+  background: var(--surface);
+  border-bottom: 1px solid #333;
+  flex-wrap: wrap;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.control-group label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.level-controls {
+  gap: 0.25rem;
+}
+
+.level-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 1.25rem;
+  line-height: 1;
+  border-radius: 50%;
+  background: #333;
+}
+
+.level-btn:hover {
+  background: #444;
+}
+
+input[type="number"] {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid #333;
+  padding: 0.5rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  width: 70px;
+  text-align: center;
+}
+
+input[type="number"]:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+input[type="range"] {
+  width: 80px;
+  height: 6px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid #333;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  max-width: 180px;
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+button {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 0.6rem 2rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+button:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+button.playing {
+  background: #333;
+}
+
+#countoff {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10rem;
+  font-weight: 700;
+  color: var(--primary);
+  opacity: 0;
+  transition: opacity 0.1s;
+  pointer-events: none;
+  z-index: 100;
+  text-shadow: 0 0 60px rgba(233, 69, 96, 0.6);
+}
+
+#countoff.visible {
+  opacity: 1;
+}
+
+#notation {
+  flex: 1;
+  padding: 2rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, var(--bg) 0%, #151525 100%);
+}
+
+#notation svg {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+  padding: 1.5rem;
+}
+
+/* Note highlighting */
+.note.current .notehead *,
+.note.current .stem,
+.note.current .flag *,
+.note.current .accid * {
+  fill: var(--primary) !important;
+  stroke: var(--primary) !important;
+  transition: fill 0.1s, stroke 0.1s;
+}
+
+/* Rest highlighting */
+.rest.current * {
+  fill: var(--primary) !important;
+}
+
+/* Correct note - nice blue/teal glow */
+.note.correct .notehead *,
+.note.correct .stem,
+.note.correct .flag *,
+.note.correct .accid * {
+  fill: var(--correct) !important;
+  stroke: var(--correct) !important;
+}
+
+.note.correct .notehead {
+  filter: drop-shadow(0 0 8px var(--correct)) drop-shadow(0 0 16px var(--correct));
+}
+
+/* Wrong note - red glow */
+.note.wrong .notehead *,
+.note.wrong .stem,
+.note.wrong .flag *,
+.note.wrong .accid * {
+  fill: var(--wrong) !important;
+  stroke: var(--wrong) !important;
+}
+
+.note.wrong .notehead {
+  filter: drop-shadow(0 0 8px var(--wrong)) drop-shadow(0 0 12px var(--wrong));
+}
+
+/* Past notes fade out - including accidentals */
+.note.past .notehead *,
+.note.past .stem,
+.note.past .flag *,
+.note.past .accid *,
+.rest.past * {
+  fill: #aaa !important;
+  stroke: #aaa !important;
+  opacity: 0.6;
+}
+
+/* Loading state */
+#notation:empty::after {
+  content: 'Loading...';
+  color: var(--text-muted);
+  font-size: 1.5rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  header {
+    padding: 0.75rem 1rem;
+  }
+
+  header h1 {
+    font-size: 1.25rem;
+  }
+
+  #controls {
+    padding: 0.75rem 1rem;
+    gap: 1rem;
+  }
+
+  #notation {
+    padding: 1rem;
+  }
+
+  #countoff {
+    font-size: 6rem;
+  }
+}
