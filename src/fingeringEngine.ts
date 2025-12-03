@@ -338,7 +338,7 @@ function calculateDifficulty(fingering: Finger[], midiNotes: number[]): number {
   return Math.min(10, Math.max(1, Math.round(score / fingering.length * 3) + 2));
 }
 
-function generateFingeringTips(fingering: Finger[], midiNotes: number[], hand: Hand): string[] {
+function generateFingeringTips(fingering: Finger[], midiNotes: number[], _hand: Hand): string[] {
   const tips: string[] = [];
 
   // Count thumb crossings
