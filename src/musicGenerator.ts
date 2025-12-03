@@ -918,7 +918,8 @@ export function generateMusicXML(): GeneratedMusic {
   const config = getLevelConfig(progress.level, progress.subLevel);
 
   // Mobile mode: 4 measures, Desktop: 8 measures
-  const numMeasures = mobileMode ? 4 : 8;
+  // Always 4 measures for clean spacing (8 was too cramped with eighth notes)
+  const numMeasures = 4;
 
   const beatsPerMeasure =
     config.timeSignature.beatType === 8
@@ -942,9 +943,6 @@ export function generateMusicXML(): GeneratedMusic {
   <part id="P1">
 `;
 
-  // System break position depends on number of measures
-  const systemBreakMeasure = mobileMode ? numMeasures + 1 : 5; // No break in mobile, or at measure 5
-
   // Calculate fingering for both hands (flatten all notes first)
   const allRhNotes = rightHand.flat();
   const allLhNotes = leftHand.flat();
@@ -958,12 +956,6 @@ export function generateMusicXML(): GeneratedMusic {
   for (let m = 0; m < numMeasures; m++) {
     xml += `    <measure number="${m + 1}">
 `;
-
-    // Add system break at appropriate position (not needed for 4-bar mobile)
-    if (m === systemBreakMeasure - 1 && !mobileMode) {
-      xml += `      <print new-system="yes"/>
-`;
-    }
 
     if (m === 0) {
       xml += `      <attributes>

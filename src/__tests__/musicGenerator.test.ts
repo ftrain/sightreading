@@ -166,23 +166,20 @@ describe('musicGenerator', () => {
   });
 
   describe('Mobile Mode', () => {
-    it('should default to desktop mode (8 measures)', () => {
+    it('should default to desktop mode', () => {
       expect(isMobileMode()).toBe(false);
-      const result = generateMusicXML();
-      expect(result.numMeasures).toBe(8);
     });
 
-    it('should generate 4 measures in mobile mode', () => {
+    it('should always generate 4 measures', () => {
+      // Both mobile and desktop now use 4 measures for cleaner layout
+      setMobileMode(false);
+      let result = generateMusicXML();
+      expect(result.numMeasures).toBe(4);
+
       setMobileMode(true);
       expect(isMobileMode()).toBe(true);
-      const result = generateMusicXML();
+      result = generateMusicXML();
       expect(result.numMeasures).toBe(4);
-    });
-
-    it('should generate 8 measures in desktop mode', () => {
-      setMobileMode(false);
-      const result = generateMusicXML();
-      expect(result.numMeasures).toBe(8);
     });
   });
 
@@ -227,7 +224,7 @@ describe('musicGenerator', () => {
     it('should generate the correct number of measures', () => {
       const result = generateMusicXML();
       const measureMatches = result.xml.match(/<measure number="/g);
-      expect(measureMatches).toHaveLength(8);
+      expect(measureMatches).toHaveLength(4); // Always 4 measures now
     });
 
     it('should include grand staff setup', () => {
@@ -383,17 +380,10 @@ describe('musicGenerator', () => {
     });
   });
 
-  describe('System Breaks', () => {
-    it('should include system break in desktop mode (8 measures)', () => {
-      setMobileMode(false);
+  describe('Layout', () => {
+    it('should not include system breaks with 4 measures', () => {
+      // With 4 measures, everything fits on one line - no system breaks needed
       const result = generateMusicXML();
-      expect(result.xml).toContain('new-system="yes"');
-    });
-
-    it('should not include system break in mobile mode (4 measures)', () => {
-      setMobileMode(true);
-      const result = generateMusicXML();
-      // In 4-bar mode, no system break is needed
       expect(result.xml).not.toContain('new-system="yes"');
     });
   });

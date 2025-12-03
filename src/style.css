@@ -137,16 +137,16 @@ body {
    SCORE CONTAINER - The Sheet Music
    ============================================ */
 #scoreContainer {
-  flex: 1;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   position: relative;
+  padding-top: var(--space-md);
 }
 
 #notation {
   width: 100%;
-  max-width: 1000px;
+  max-width: 1100px;
   display: flex;
   justify-content: center;
 }
@@ -156,7 +156,7 @@ body {
   height: auto;
   background: var(--paper);
   border-radius: 2px;
-  padding: var(--space-lg) var(--space-xl);
+  padding: var(--space-md) var(--space-lg);
 
   /* Elegant paper shadow */
   box-shadow:

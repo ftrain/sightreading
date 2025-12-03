@@ -148,25 +148,26 @@ async function init() {
 
 function updateVerovioOptions() {
   const container = document.getElementById('notation')!;
-  const width = Math.max(600, container.clientWidth - 40);
+  const width = Math.max(800, container.clientWidth - 20);
 
-  // Adjust scale based on mobile mode - smaller for better spacing
-  const scale = isMobileMode() ? 35 : 40;
+  // Smaller scale gives more horizontal room for note spacing
+  const scale = isMobileMode() ? 35 : 42;
 
   toolkit.setOptions({
     pageWidth: width,
-    pageHeight: isMobileMode() ? 320 : 650,
+    pageHeight: 600, // Compact height for single-line display
     scale: scale,
     adjustPageHeight: true,
     footer: 'none',
     header: 'none',
-    breaks: 'encoded', // Respect system breaks in MusicXML
-    // Spacing options for better note distribution
-    spacingNonLinear: 0.65, // More space for shorter notes
-    spacingLinear: 0.3, // Base spacing factor
-    minMeasureWidth: 120, // Minimum measure width
-    // Connect barlines across grand staff
-    barLineSeparation: 0.6,
+    breaks: 'encoded',
+    // Very generous spacing to prevent eighth note compression
+    spacingNonLinear: 0.6, // Less aggressive compression of shorter notes
+    spacingLinear: 0.35, // More proportional spacing
+    minMeasureWidth: 180, // Wider minimum measure width
+    spacingStaff: 6, // Space between staves in a system
+    spacingSystem: 4, // Space between systems
+    lyricSize: 4.5, // Smaller lyrics if any
   });
 }
 
