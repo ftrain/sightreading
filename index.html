@@ -49,6 +49,16 @@
           <input type="checkbox" id="handsSeparate" />
         </div>
 
+        <div class="control-group fingering-group">
+          <label for="showFingering">Fingering</label>
+          <input type="checkbox" id="showFingering" />
+        </div>
+
+        <div class="control-group hints-group">
+          <label for="showHints">Hints</label>
+          <input type="checkbox" id="showHints" checked />
+        </div>
+
         <div class="control-group midi-control-group">
           <label for="midiInput">MIDI</label>
           <select id="midiInput" aria-label="Select MIDI input device">
@@ -66,6 +76,18 @@
 
       <div id="countoff" aria-live="polite" aria-atomic="true"></div>
       <div id="notation" role="img" aria-label="Music notation for sight reading practice"></div>
+      <div id="theoryHint" class="theory-hint" aria-live="polite"></div>
+      <div id="fingeringDisplay" class="fingering-display" aria-live="polite">
+        <div class="fingering-row">
+          <span class="hand-label">RH:</span>
+          <span id="rhFingering" class="fingering-numbers"></span>
+        </div>
+        <div class="fingering-row">
+          <span class="hand-label">LH:</span>
+          <span id="lhFingering" class="fingering-numbers"></span>
+        </div>
+        <div id="fingeringTips" class="fingering-tips"></div>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

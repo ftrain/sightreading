@@ -19,6 +19,8 @@ export interface GeneratedMusic {
   numMeasures: number;
   suggestedBpm: number;
   keyName: string;
+  rightHandNotes: NoteData[];
+  leftHandNotes: NoteData[];
 }
 
 // Level structure: Level 1a, 1b, 1c, 1d... 2a, 2b, 2c, 2d... etc.
@@ -244,7 +246,7 @@ export function getBpmMasteryRemaining(): number {
 // LEVEL 15: Ab MAJOR (4 flats)
 // ... and so on
 
-interface NoteData {
+export interface NoteData {
   step: string;
   alter: number;
   octave: number;
@@ -917,6 +919,10 @@ export function generateMusicXML(): GeneratedMusic {
   xml += `  </part>
 </score-partwise>`;
 
+  // Flatten notes for analysis
+  const rightHandNotes = rightHand.flat();
+  const leftHandNotes = leftHand.flat();
+
   return {
     xml,
     timeSignature: config.timeSignature,
@@ -926,6 +932,8 @@ export function generateMusicXML(): GeneratedMusic {
     numMeasures,
     suggestedBpm: config.suggestedBpm,
     keyName: config.key.name,
+    rightHandNotes,
+    leftHandNotes,
   };
 }
 

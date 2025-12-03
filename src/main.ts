@@ -17,6 +17,9 @@ import {
   setBpm,
   getBpmMasteryRemaining,
 } from './musicGenerator';
+import type { NoteData } from './musicGenerator';
+import { analyzePhrase, getAnalysisSummary } from './theoryAnalyzer';
+import { generateFingering, formatFingeringDisplay } from './fingeringEngine';
 
 // State
 let toolkit: VerovioToolkit;
@@ -64,6 +67,15 @@ let hadMistake = false;
 
 // Current lesson info
 let currentLessonDescription = '';
+
+// Current piece notes for analysis
+let currentRightHandNotes: NoteData[] = [];
+let currentLeftHandNotes: NoteData[] = [];
+let currentKeyName = 'C';
+
+// UI settings
+let showHints = true;
+let showFingering = false;
 
 // Detect mobile device and orientation
 function detectMobile(): boolean {
@@ -233,10 +245,22 @@ function playMetronomeClick(subdivisionInBeat: number) {
 
 function generateAndRender() {
   updateVerovioOptions();
-  const { xml, timeSignature, lessonDescription, suggestedBpm } = generateMusicXML();
+  const {
+    xml,
+    timeSignature,
+    lessonDescription,
+    suggestedBpm,
+    keyName,
+    rightHandNotes,
+    leftHandNotes,
+  } = generateMusicXML();
+
   currentTimeSig = timeSignature;
   currentPieceXml = xml;
   currentLessonDescription = lessonDescription;
+  currentRightHandNotes = rightHandNotes;
+  currentLeftHandNotes = leftHandNotes;
+  currentKeyName = keyName.split(' ')[0]; // Extract just the root (e.g., "C" from "C major")
 
   // Sync BPM with lesson suggestion on level change
   const bpmInput = document.getElementById('bpm') as HTMLInputElement;
@@ -261,6 +285,12 @@ function generateAndRender() {
 
   // Update level display
   updateLevelDisplay();
+
+  // Update theory hints
+  updateTheoryHint();
+
+  // Update fingering display
+  updateFingeringDisplay();
 }
 
 function renderCurrentHand() {
@@ -332,6 +362,56 @@ function updateLevelDisplay() {
 
     progressInfo.textContent = progressText;
   }
+}
+
+function updateTheoryHint() {
+  const hintEl = document.getElementById('theoryHint');
+  if (!hintEl) return;
+
+  if (!showHints) {
+    hintEl.classList.remove('visible');
+    return;
+  }
+
+  // Analyze the right hand melody (primary learning focus)
+  const analysis = analyzePhrase(currentRightHandNotes, currentKeyName);
+  const summary = getAnalysisSummary(analysis);
+
+  if (summary) {
+    hintEl.textContent = summary;
+    hintEl.classList.add('visible');
+  } else {
+    hintEl.classList.remove('visible');
+  }
+}
+
+function updateFingeringDisplay() {
+  const fingeringEl = document.getElementById('fingeringDisplay');
+  const rhFingeringEl = document.getElementById('rhFingering');
+  const lhFingeringEl = document.getElementById('lhFingering');
+  const tipsEl = document.getElementById('fingeringTips');
+
+  if (!fingeringEl || !rhFingeringEl || !lhFingeringEl) return;
+
+  if (!showFingering) {
+    fingeringEl.classList.remove('visible');
+    return;
+  }
+
+  // Generate fingering for both hands
+  const rhFingering = generateFingering(currentRightHandNotes, 'right');
+  const lhFingering = generateFingering(currentLeftHandNotes, 'left');
+
+  rhFingeringEl.textContent = formatFingeringDisplay(rhFingering);
+  lhFingeringEl.textContent = formatFingeringDisplay(lhFingering);
+
+  // Combine tips from both hands
+  const allTips = [...rhFingering.tips, ...lhFingering.tips];
+  if (tipsEl) {
+    tipsEl.textContent = allTips.slice(0, 2).join(' • '); // Limit to 2 tips
+  }
+
+  fingeringEl.classList.add('visible');
 }
 
 function groupNotesByPosition() {
@@ -685,6 +765,26 @@ function setupControls() {
       if (!isPlaying) {
         generateAndRender();
       }
+    });
+  }
+
+  const showFingeringCheckbox = document.getElementById(
+    'showFingering'
+  ) as HTMLInputElement;
+  if (showFingeringCheckbox) {
+    showFingeringCheckbox.addEventListener('change', () => {
+      showFingering = showFingeringCheckbox.checked;
+      updateFingeringDisplay();
+    });
+  }
+
+  const showHintsCheckbox = document.getElementById(
+    'showHints'
+  ) as HTMLInputElement;
+  if (showHintsCheckbox) {
+    showHintsCheckbox.addEventListener('change', () => {
+      showHints = showHintsCheckbox.checked;
+      updateTheoryHint();
     });
   }
 

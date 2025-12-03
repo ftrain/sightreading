@@ -644,6 +644,108 @@ body.mobile-mode #notation svg {
 }
 
 /* ============================================
+   THEORY HINTS & FINGERING DISPLAY
+   ============================================ */
+.theory-hint {
+  padding: 0.75rem 2rem;
+  color: #a8e6cf;
+  font-size: 0.85rem;
+  background: rgba(168, 230, 207, 0.08);
+  border-left: 3px solid #a8e6cf;
+  margin: 0 2rem;
+  border-radius: 0 8px 8px 0;
+  display: none;
+}
+
+.theory-hint.visible {
+  display: block;
+}
+
+.fingering-display {
+  padding: 0.75rem 2rem;
+  background: var(--surface);
+  border-top: 1px solid #333;
+  display: none;
+}
+
+.fingering-display.visible {
+  display: block;
+}
+
+.fingering-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.hand-label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  width: 30px;
+}
+
+.fingering-numbers {
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: var(--primary);
+  letter-spacing: 0.25em;
+}
+
+.fingering-tips {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #333;
+}
+
+.fingering-tips:empty {
+  display: none;
+}
+
+/* Mobile optimizations for hints */
+@media (max-width: 768px) {
+  .theory-hint {
+    padding: 0.5rem 1rem;
+    margin: 0 1rem;
+    font-size: 0.75rem;
+  }
+
+  .fingering-display {
+    padding: 0.5rem 1rem;
+  }
+
+  .fingering-numbers {
+    font-size: 0.8rem;
+  }
+
+  /* Hide hints/fingering checkboxes on mobile portrait */
+  .fingering-group,
+  .hints-group {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) and (orientation: landscape) {
+  .theory-hint {
+    padding: 0.35rem 1rem;
+    margin: 0 1rem;
+    font-size: 0.7rem;
+  }
+
+  .fingering-display {
+    padding: 0.35rem 1rem;
+    font-size: 0.7rem;
+  }
+
+  .fingering-numbers {
+    font-size: 0.75rem;
+    letter-spacing: 0.15em;
+  }
+}
+
+/* ============================================
    DARK MODE PREFERENCE (already dark, but explicit)
    ============================================ */
 @media (prefers-color-scheme: dark) {
