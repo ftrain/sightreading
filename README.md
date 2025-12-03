@@ -43,6 +43,7 @@ A web-based sight reading practice app for piano. Generates infinite procedural 
 - [TypeScript](https://www.typescriptlang.org/) - Type safety
 - [Verovio](https://www.verovio.org/) - Music notation rendering (MusicXML to SVG)
 - [Tone.js](https://tonejs.github.io/) - Web audio (piano samples, metronome)
+- [Vitest](https://vitest.dev/) - Testing framework
 - Web MIDI API - MIDI keyboard input
 
 ## Development
@@ -53,6 +54,12 @@ npm install
 
 # Start dev server
 npm run dev
+
+# Run tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
 
 # Build for production
 npm run build
@@ -67,6 +74,12 @@ npm run build
 5. Play the highlighted notes on your keyboard
 6. Practice until you can play each piece without mistakes to advance
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute.
+
 ## License
 
-MIT
+LGPL-3.0 - See [LICENSE](LICENSE) for details.
+
+This project uses [Verovio](https://www.verovio.org/) which is licensed under LGPL-3.0.

@@ -8,13 +8,19 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "deploy": "npm run build && gh-pages -d dist"
   },
   "devDependencies": {
     "@types/webmidi": "^2.1.0",
+    "@vitest/coverage-v8": "^4.0.15",
     "gh-pages": "^6.3.0",
+    "jsdom": "^27.2.0",
     "typescript": "~5.9.3",
-    "vite": "^7.2.4"
+    "vite": "^7.2.4",
+    "vitest": "^4.0.15"
   },
   "dependencies": {
     "tone": "^15.1.22",

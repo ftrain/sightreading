@@ -36,7 +36,7 @@ let selectedMidiInput: string | null = localStorage.getItem('midiDeviceId');
 let bpm = 30;
 let metronomeEnabled = true;
 let metronomeVolume = -20; // dB base for metronome (quieter default)
-let handsSeparate = true;
+let handsSeparate = false;
 
 // Hands separate mode: 'rh' = right hand, 'lh' = left hand, 'both' = both hands
 type HandMode = 'rh' | 'lh' | 'both';
