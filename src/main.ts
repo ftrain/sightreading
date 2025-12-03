@@ -16,10 +16,10 @@ import {
   increaseTempo,
   setBpm,
   getBpmMasteryRemaining,
+  setIncludeFingering,
 } from './musicGenerator';
 import type { NoteData } from './musicGenerator';
 import { analyzePhrase, getAnalysisSummary } from './theoryAnalyzer';
-import { generateFingering, formatFingeringDisplay } from './fingeringEngine';
 
 // State
 let toolkit: VerovioToolkit;
@@ -70,12 +70,10 @@ let currentLessonDescription = '';
 
 // Current piece notes for analysis
 let currentRightHandNotes: NoteData[] = [];
-let currentLeftHandNotes: NoteData[] = [];
 let currentKeyName = 'C';
 
 // UI settings
 let showHints = true;
-let showFingering = false;
 
 // Detect mobile device and orientation
 function detectMobile(): boolean {
@@ -118,22 +116,34 @@ async function init() {
   // Setup MIDI
   setupMIDI();
 
-  // Handle window resize
+  // Handle window resize - re-render existing music, don't generate new
   window.addEventListener('resize', () => {
+    const wasMobile = isMobileMode();
     updateMobileMode();
     updateVerovioOptions();
     if (!isPlaying) {
-      regenerateCurrentMusic();
+      // Only regenerate if mobile mode changed (different measure count)
+      // Otherwise just re-render the existing piece
+      if (wasMobile !== isMobileMode()) {
+        generateAndRender();
+      } else {
+        rerenderCurrentMusic();
+      }
     }
   });
 
   // Handle orientation change on mobile
   window.addEventListener('orientationchange', () => {
     setTimeout(() => {
+      const wasMobile = isMobileMode();
       updateMobileMode();
       updateVerovioOptions();
       if (!isPlaying) {
-        regenerateCurrentMusic();
+        if (wasMobile !== isMobileMode()) {
+          generateAndRender();
+        } else {
+          rerenderCurrentMusic();
+        }
       }
     }, 100);
   });
@@ -143,29 +153,31 @@ function updateVerovioOptions() {
   const container = document.getElementById('notation')!;
   const width = Math.max(600, container.clientWidth - 40);
 
-  // Adjust scale based on mobile mode
-  const scale = isMobileMode() ? 45 : 50;
+  // Adjust scale based on mobile mode - smaller for better spacing
+  const scale = isMobileMode() ? 40 : 45;
 
   toolkit.setOptions({
     pageWidth: width,
-    pageHeight: isMobileMode() ? 400 : 800,
+    pageHeight: isMobileMode() ? 350 : 700,
     scale: scale,
     adjustPageHeight: true,
     footer: 'none',
     header: 'none',
     breaks: 'encoded', // Respect system breaks in MusicXML
+    // Spacing options for better note distribution
+    spacingNonLinear: 0.6, // More space for shorter notes (default 0.54)
+    spacingLinear: 0.25, // Base spacing factor
   });
 }
 
-function regenerateCurrentMusic() {
-  const { xml, lessonDescription } = generateMusicXML();
-  currentLessonDescription = lessonDescription;
-  toolkit.loadData(xml);
+// Re-render the current piece without generating new music
+function rerenderCurrentMusic() {
+  if (!currentPieceXml) return;
+  toolkit.loadData(currentPieceXml);
   const svg = toolkit.renderToSVG(1);
   const notation = document.getElementById('notation')!;
   notation.innerHTML = svg;
   groupNotesByPosition();
-  updateLevelDisplay();
 }
 
 async function initAudio() {
@@ -252,14 +264,12 @@ function generateAndRender() {
     suggestedBpm,
     keyName,
     rightHandNotes,
-    leftHandNotes,
   } = generateMusicXML();
 
   currentTimeSig = timeSignature;
   currentPieceXml = xml;
   currentLessonDescription = lessonDescription;
   currentRightHandNotes = rightHandNotes;
-  currentLeftHandNotes = leftHandNotes;
   currentKeyName = keyName.split(' ')[0]; // Extract just the root (e.g., "C" from "C major")
 
   // Sync BPM with lesson suggestion on level change
@@ -288,9 +298,6 @@ function generateAndRender() {
 
   // Update theory hints
   updateTheoryHint();
-
-  // Update fingering display
-  updateFingeringDisplay();
 }
 
 function renderCurrentHand() {
@@ -392,35 +399,6 @@ function updateTheoryHint() {
   } else {
     hintEl.hidden = true;
   }
-}
-
-function updateFingeringDisplay() {
-  const fingeringEl = document.getElementById('fingeringDisplay');
-  const rhFingeringEl = document.getElementById('rhFingering');
-  const lhFingeringEl = document.getElementById('lhFingering');
-  const tipsEl = document.getElementById('fingeringTips');
-
-  if (!fingeringEl || !rhFingeringEl || !lhFingeringEl) return;
-
-  if (!showFingering) {
-    fingeringEl.hidden = true;
-    return;
-  }
-
-  // Generate fingering for both hands
-  const rhFingering = generateFingering(currentRightHandNotes, 'right');
-  const lhFingering = generateFingering(currentLeftHandNotes, 'left');
-
-  rhFingeringEl.textContent = formatFingeringDisplay(rhFingering);
-  lhFingeringEl.textContent = formatFingeringDisplay(lhFingering);
-
-  // Combine tips from both hands
-  const allTips = [...rhFingering.tips, ...lhFingering.tips];
-  if (tipsEl) {
-    tipsEl.textContent = allTips.slice(0, 2).join(' • '); // Limit to 2 tips
-  }
-
-  fingeringEl.hidden = false;
 }
 
 function groupNotesByPosition() {
@@ -814,8 +792,11 @@ function setupControls() {
   ) as HTMLInputElement;
   if (showFingeringCheckbox) {
     showFingeringCheckbox.addEventListener('change', () => {
-      showFingering = showFingeringCheckbox.checked;
-      updateFingeringDisplay();
+      setIncludeFingering(showFingeringCheckbox.checked);
+      // Regenerate to include/exclude fingering in notation
+      if (!isPlaying) {
+        generateAndRender();
+      }
     });
   }
 

@@ -10,6 +10,19 @@
 // - NEW KEYS RESET TO BASICS - introduce key with whole notes first
 // - TEMPO is separate from note complexity - master slow before fast
 
+import { generateFingering, type Finger } from './fingeringEngine';
+
+// Global setting for whether to include fingering in notation
+let includeFingering = false;
+
+export function setIncludeFingering(include: boolean): void {
+  includeFingering = include;
+}
+
+export function getIncludeFingering(): boolean {
+  return includeFingering;
+}
+
 export interface GeneratedMusic {
   xml: string;
   timeSignature: { beats: number; beatType: number };
@@ -869,6 +882,16 @@ export function generateMusicXML(): GeneratedMusic {
   // System break position depends on number of measures
   const systemBreakMeasure = mobileMode ? numMeasures + 1 : 5; // No break in mobile, or at measure 5
 
+  // Calculate fingering for both hands (flatten all notes first)
+  const allRhNotes = rightHand.flat();
+  const allLhNotes = leftHand.flat();
+  const rhFingering = includeFingering ? generateFingering(allRhNotes, 'right') : null;
+  const lhFingering = includeFingering ? generateFingering(allLhNotes, 'left') : null;
+
+  // Track fingering index across measures
+  let rhFingerIdx = 0;
+  let lhFingerIdx = 0;
+
   for (let m = 0; m < numMeasures; m++) {
     xml += `    <measure number="${m + 1}">
 `;
@@ -896,7 +919,13 @@ export function generateMusicXML(): GeneratedMusic {
     for (let i = 0; i < rightHand[m].length; i++) {
       const note = rightHand[m][i];
       const nextNote = i < rightHand[m].length - 1 ? rightHand[m][i + 1] : null;
-      xml += noteToXML(note, 1, divisions, rhBeamState, nextNote);
+      // Get fingering for this note (skip rests in fingering array)
+      let finger: Finger | undefined;
+      if (rhFingering && !note.isRest) {
+        finger = rhFingering.notes[rhFingerIdx]?.finger;
+        rhFingerIdx++;
+      }
+      xml += noteToXML(note, 1, divisions, rhBeamState, nextNote, finger);
     }
 
     // Backup to write left hand
@@ -909,7 +938,13 @@ export function generateMusicXML(): GeneratedMusic {
     for (let i = 0; i < leftHand[m].length; i++) {
       const note = leftHand[m][i];
       const nextNote = i < leftHand[m].length - 1 ? leftHand[m][i + 1] : null;
-      xml += noteToXML(note, 2, divisions, lhBeamState, nextNote);
+      // Get fingering for this note (skip rests in fingering array)
+      let finger: Finger | undefined;
+      if (lhFingering && !note.isRest) {
+        finger = lhFingering.notes[lhFingerIdx]?.finger;
+        lhFingerIdx++;
+      }
+      xml += noteToXML(note, 2, divisions, lhBeamState, nextNote, finger);
     }
 
     xml += `    </measure>
@@ -942,7 +977,8 @@ function noteToXML(
   staff: number,
   divisions: number,
   beamState: BeamState,
-  nextNote: NoteData | null
+  nextNote: NoteData | null,
+  finger?: Finger
 ): string {
   const dur = Math.round(note.duration * divisions);
 
@@ -989,6 +1025,19 @@ function noteToXML(
     beamState.inBeam = false;
   }
 
+  // Fingering notation (optional)
+  let fingeringXml = '';
+  if (finger !== undefined && includeFingering) {
+    // placement: above for treble (staff 1), below for bass (staff 2)
+    const placement = staff === 1 ? 'above' : 'below';
+    fingeringXml = `        <notations>
+          <technical>
+            <fingering placement="${placement}">${finger}</fingering>
+          </technical>
+        </notations>
+`;
+  }
+
   return `      <note>
         <pitch>
           <step>${note.step}</step>
@@ -997,7 +1046,7 @@ ${alterXml}          <octave>${note.octave}</octave>
         <duration>${dur}</duration>
         ${getNoteType(note.duration)}
 ${accidentalXml}${beamXml}        <staff>${staff}</staff>
-      </note>
+${fingeringXml}      </note>
 `;
 }
 
