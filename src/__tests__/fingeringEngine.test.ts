@@ -6,8 +6,8 @@ import {
 } from '../fingeringEngine';
 
 describe('fingeringEngine', () => {
-  describe('position-based fingering (beginners)', () => {
-    it('should use C Position fingering for C-D-E-F-G (RH)', () => {
+  describe('position-based fingering (C-D-E-F-G)', () => {
+    it('should use 1-2-3-4-5 for C-D-E-F-G ascending (RH)', () => {
       const notes = [
         { step: 'C', alter: 0, octave: 4, duration: 1, isRest: false },
         { step: 'D', alter: 0, octave: 4, duration: 1, isRest: false },
@@ -18,13 +18,13 @@ describe('fingeringEngine', () => {
 
       const result = generateFingering(notes, 'right');
 
-      // In C Position, RH fingering should be 1-2-3-4-5
+      // C=1, D=2, E=3, F=4, G=5
       expect(result.notes.map(n => n.finger)).toEqual([1, 2, 3, 4, 5]);
       expect(result.position).toBe('C Position');
-      expect(result.difficulty).toBe(1); // Easy positional fingering
+      expect(result.difficulty).toBe(1); // Fits in 5-finger position
     });
 
-    it('should use C Position fingering for C-E-G (RH triad)', () => {
+    it('should use 1-3-5 for C-E-G triad (RH)', () => {
       const notes = [
         { step: 'C', alter: 0, octave: 4, duration: 1, isRest: false },
         { step: 'E', alter: 0, octave: 4, duration: 1, isRest: false },
@@ -33,12 +33,12 @@ describe('fingeringEngine', () => {
 
       const result = generateFingering(notes, 'right');
 
-      // C-E-G in C Position = fingers 1-3-5
+      // C=1, E=3, G=5
       expect(result.notes.map(n => n.finger)).toEqual([1, 3, 5]);
       expect(result.position).toBe('C Position');
     });
 
-    it('should use inverted fingering for left hand C Position', () => {
+    it('should use inverted fingering for left hand (5-4-3-2-1)', () => {
       const notes = [
         { step: 'C', alter: 0, octave: 3, duration: 1, isRest: false },
         { step: 'D', alter: 0, octave: 3, duration: 1, isRest: false },
@@ -49,12 +49,12 @@ describe('fingeringEngine', () => {
 
       const result = generateFingering(notes, 'left');
 
-      // In C Position, LH fingering should be 5-4-3-2-1 (pinky on C, thumb on G)
+      // LH: C=5, D=4, E=3, F=2, G=1
       expect(result.notes.map(n => n.finger)).toEqual([5, 4, 3, 2, 1]);
       expect(result.position).toBe('C Position');
     });
 
-    it('should indicate position in tips', () => {
+    it('should include position in tips', () => {
       const notes = [
         { step: 'C', alter: 0, octave: 4, duration: 1, isRest: false },
         { step: 'E', alter: 0, octave: 4, duration: 1, isRest: false },
@@ -66,7 +66,7 @@ describe('fingeringEngine', () => {
     });
   });
 
-  describe('generateFingering', () => {
+  describe('generateFingering basics', () => {
     it('should generate fingering for a simple scale', () => {
       const notes = [
         { step: 'C', alter: 0, octave: 4, duration: 1, isRest: false },
@@ -124,26 +124,6 @@ describe('fingeringEngine', () => {
       });
     });
 
-    it('should use algorithmic fingering for passages outside 5-finger position', () => {
-      // Create a passage spanning more than a 5th (requires thumb crossing)
-      const notes = [
-        { step: 'C', alter: 0, octave: 4, duration: 1, isRest: false },
-        { step: 'D', alter: 0, octave: 4, duration: 1, isRest: false },
-        { step: 'E', alter: 0, octave: 4, duration: 1, isRest: false },
-        { step: 'F', alter: 0, octave: 4, duration: 1, isRest: false },
-        { step: 'G', alter: 0, octave: 4, duration: 1, isRest: false },
-        { step: 'A', alter: 0, octave: 4, duration: 1, isRest: false },
-        { step: 'B', alter: 0, octave: 4, duration: 1, isRest: false },
-        { step: 'C', alter: 0, octave: 5, duration: 1, isRest: false },
-      ];
-
-      const result = generateFingering(notes, 'right');
-
-      // Should fall back to algorithmic (no position)
-      expect(result.position).toBeUndefined();
-      expect(result.notes).toHaveLength(8);
-    });
-
     it('should handle sharps and flats', () => {
       const notes = [
         { step: 'F', alter: 1, octave: 4, duration: 1, isRest: false }, // F#
@@ -156,6 +136,39 @@ describe('fingeringEngine', () => {
       expect(result.notes).toHaveLength(3);
       expect(result.notes[0].note).toBe('F#4');
       expect(result.notes[2].note).toBe('Bb4');
+    });
+  });
+
+  describe('extended range fingering', () => {
+    it('should handle octave range with extension (use finger 5 for high notes)', () => {
+      const notes = [
+        { step: 'C', alter: 0, octave: 4, duration: 1, isRest: false },
+        { step: 'E', alter: 0, octave: 4, duration: 1, isRest: false },
+        { step: 'G', alter: 0, octave: 4, duration: 1, isRest: false },
+        { step: 'C', alter: 0, octave: 5, duration: 1, isRest: false }, // Octave above
+      ];
+
+      const result = generateFingering(notes, 'right');
+
+      // C=1, E=3, G=5, high C=5 (extension)
+      expect(result.notes.map(n => n.finger)).toEqual([1, 3, 5, 5]);
+      expect(result.difficulty).toBe(2); // Octave range = difficulty 2
+    });
+
+    it('should use consistent fingering for repeated patterns', () => {
+      const notes = [
+        { step: 'C', alter: 0, octave: 4, duration: 1, isRest: false },
+        { step: 'G', alter: 0, octave: 4, duration: 1, isRest: false },
+        { step: 'C', alter: 0, octave: 4, duration: 1, isRest: false },
+        { step: 'G', alter: 0, octave: 4, duration: 1, isRest: false },
+      ];
+
+      const result = generateFingering(notes, 'right');
+
+      // Same note should always get same finger
+      expect(result.notes[0].finger).toBe(result.notes[2].finger); // Both Cs
+      expect(result.notes[1].finger).toBe(result.notes[3].finger); // Both Gs
+      expect(result.notes.map(n => n.finger)).toEqual([1, 5, 1, 5]);
     });
   });
 
@@ -195,7 +208,7 @@ describe('fingeringEngine', () => {
     });
   });
 
-  describe('algorithm correctness', () => {
+  describe('predictability and consistency', () => {
     it('should avoid same finger on consecutive different notes', () => {
       const notes = [
         { step: 'C', alter: 0, octave: 4, duration: 1, isRest: false },
@@ -211,7 +224,7 @@ describe('fingeringEngine', () => {
       }
     });
 
-    it('should prefer natural finger progressions for ascending RH', () => {
+    it('should use increasing fingers for ascending RH scale', () => {
       const notes = [
         { step: 'C', alter: 0, octave: 4, duration: 1, isRest: false },
         { step: 'D', alter: 0, octave: 4, duration: 1, isRest: false },
@@ -220,12 +233,12 @@ describe('fingeringEngine', () => {
 
       const result = generateFingering(notes, 'right');
 
-      // Ascending scale should use increasing fingers in position
+      // Ascending scale should use increasing fingers
       expect(result.notes[0].finger).toBeLessThan(result.notes[1].finger);
       expect(result.notes[1].finger).toBeLessThan(result.notes[2].finger);
     });
 
-    it('should prefer natural finger progressions for descending LH', () => {
+    it('should use decreasing fingers for descending LH pattern', () => {
       const notes = [
         { step: 'G', alter: 0, octave: 3, duration: 1, isRest: false },
         { step: 'F', alter: 0, octave: 3, duration: 1, isRest: false },
@@ -234,10 +247,49 @@ describe('fingeringEngine', () => {
 
       const result = generateFingering(notes, 'left');
 
-      // LH descending should use increasing fingers (1 -> 2 -> 3)
-      // because LH is inverted: thumb on high notes, pinky on low
+      // LH descending: high note (G) uses thumb (1), lower notes use higher fingers
+      // G=1, F=2, E=3
       expect(result.notes[0].finger).toBeLessThan(result.notes[1].finger);
       expect(result.notes[1].finger).toBeLessThan(result.notes[2].finger);
+    });
+
+    it('should give same note same finger regardless of sequence', () => {
+      // Jumping pattern: C-G-E-G-C-E
+      const notes = [
+        { step: 'C', alter: 0, octave: 4, duration: 1, isRest: false },
+        { step: 'G', alter: 0, octave: 4, duration: 1, isRest: false },
+        { step: 'E', alter: 0, octave: 4, duration: 1, isRest: false },
+        { step: 'G', alter: 0, octave: 4, duration: 1, isRest: false },
+        { step: 'C', alter: 0, octave: 4, duration: 1, isRest: false },
+        { step: 'E', alter: 0, octave: 4, duration: 1, isRest: false },
+      ];
+
+      const result = generateFingering(notes, 'right');
+
+      // All Cs should have the same finger
+      expect(result.notes[0].finger).toBe(result.notes[4].finger);
+      // All Gs should have the same finger
+      expect(result.notes[1].finger).toBe(result.notes[3].finger);
+      // All Es should have the same finger
+      expect(result.notes[2].finger).toBe(result.notes[5].finger);
+    });
+  });
+
+  describe('G position fingering', () => {
+    it('should correctly finger G-A-B-C-D (RH)', () => {
+      const notes = [
+        { step: 'G', alter: 0, octave: 4, duration: 1, isRest: false },
+        { step: 'A', alter: 0, octave: 4, duration: 1, isRest: false },
+        { step: 'B', alter: 0, octave: 4, duration: 1, isRest: false },
+        { step: 'C', alter: 0, octave: 5, duration: 1, isRest: false },
+        { step: 'D', alter: 0, octave: 5, duration: 1, isRest: false },
+      ];
+
+      const result = generateFingering(notes, 'right');
+
+      // G=1 (root), A=2, B=3, C=4, D=5
+      expect(result.notes.map(n => n.finger)).toEqual([1, 2, 3, 4, 5]);
+      expect(result.position).toBe('G Position');
     });
   });
 });

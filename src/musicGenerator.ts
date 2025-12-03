@@ -276,6 +276,8 @@ export interface NoteData {
   octave: number;
   duration: number;
   isRest: boolean;
+  // For chords: additional notes played simultaneously
+  chordNotes?: Array<{ step: string; alter: number; octave: number }>;
 }
 
 // ============================================
@@ -361,6 +363,27 @@ const wideIntervalPatterns = [
   [8, 5, 3, 1], // Descending from octave
   [1, 3, 5, 8, 5, 3, 1], // Full octave arpeggio
 ];
+
+// ============================================
+// CHORD PATTERNS (Simultaneous notes)
+// ============================================
+// Chords are represented as arrays of scale degrees played together
+
+// Basic intervals (2 notes together)
+const basicIntervals: number[][] = [
+  [1, 3], // 3rd
+  [1, 5], // 5th
+  [3, 5], // 3rd to 5th
+  [1, 8], // Octave
+];
+
+// Triads (3 notes together)
+const triadChords: number[][] = [
+  [1, 3, 5], // Root position triad
+  [1, 3, 8], // Open voicing
+  [1, 5, 8], // Power chord + octave
+];
+
 
 // ============================================
 // SCALES AND KEYS (Circle of Fifths)
@@ -489,6 +512,9 @@ interface LevelConfig {
   patterns: number[][]; // Which melodic patterns to use
   includeLeftHand: boolean;
   suggestedBpm: number;
+  // Chord/harmony settings
+  chordProbability: number; // 0-1, probability of a chord instead of single note
+  chordTypes: 'none' | 'intervals' | 'triads' | 'all'; // Which chord types to use
 }
 
 function getLevelConfig(level: number, subLevel: number): LevelConfig {
@@ -507,6 +533,8 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
     patterns: stepwisePatterns.slice(0, 3),
     includeLeftHand: level >= 6,
     suggestedBpm: getSuggestedBpm(level),
+    chordProbability: 0,
+    chordTypes: 'none',
   };
 
   // ========================================
@@ -630,20 +658,24 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
         config.patterns = [...stepwisePatterns, ...triadicPatterns];
         break;
       case 2:
-        // Dotted quarters
+        // Dotted quarters + introduce intervals (3rds, 5ths)
         config.durations = [3, 1.5, 1]; // 1.5 = dotted quarter
         config.restProbability = 0.1;
         config.patterns = folkPatterns;
+        config.chordProbability = 0.2; // 20% chance of chord
+        config.chordTypes = 'intervals';
         break;
       case 3:
         config.accidentalProbability = 0.12;
         config.restProbability = 0.1;
         config.durations = [4, 2, 1];
         config.patterns = [...folkPatterns, ...classicalPatterns.slice(0, 3)];
+        config.chordProbability = 0.25; // More chords
+        config.chordTypes = 'intervals';
         break;
     }
   } else if (level === 6) {
-    // Level 6: Introduce 6ths and start ledger lines above staff
+    // Level 6: Introduce 6ths, triads, and ledger lines above staff
     config.noteRange = [1, 2, 3, 4, 5, 6, 7, 8]; // Includes high C (ledger line)
     config.durations = [2, 1];
     config.maxInterval = 6; // Allow 6ths
@@ -652,22 +684,30 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
 
     switch (subLevel) {
       case 0:
-        // Introduce 6ths
+        // Introduce 6ths and basic intervals
         config.patterns = [[1, 6], [6, 1], [1, 3, 5], [3, 8]];
+        config.chordProbability = 0.25;
+        config.chordTypes = 'intervals';
         break;
       case 1:
         config.patterns = [...triadicPatterns, ...wideIntervalPatterns.slice(0, 5)];
+        config.chordProbability = 0.3;
+        config.chordTypes = 'intervals';
         break;
       case 2:
-        // Add high C ledger line
+        // Add triads
         config.patterns = [...folkPatterns.slice(0, 3), [1, 5, 8], [8, 5, 1]];
+        config.chordProbability = 0.35;
+        config.chordTypes = 'triads';
         break;
       case 3:
         config.patterns = [...folkPatterns, ...wideIntervalPatterns.slice(0, 8)];
+        config.chordProbability = 0.4;
+        config.chordTypes = 'triads';
         break;
     }
   } else if (level === 7) {
-    // Level 7: Eighths, 7ths, octaves, more ledger lines
+    // Level 7: Eighths, 7ths, octaves, triads, more ledger lines
     config.noteRange = [0, 1, 2, 3, 4, 5, 6, 7, 8]; // Low B (ledger below) to high C
     config.maxInterval = 8; // Allow octaves
     config.includeLeftHand = true;
@@ -677,21 +717,29 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
       case 0:
         config.durations = [0.5, 0.5, 1]; // Pairs of eighths
         config.patterns = stepwisePatterns;
+        config.chordProbability = 0.2;
+        config.chordTypes = 'intervals';
         break;
       case 1:
         // Introduce octave jumps
         config.durations = [0.5, 1];
         config.patterns = [...stepwisePatterns, [1, 8], [8, 1]];
+        config.chordProbability = 0.25;
+        config.chordTypes = 'intervals';
         break;
       case 2:
         config.durations = [0.5, 1, 2];
         config.restProbability = 0.08;
         config.patterns = [...folkPatterns, ...wideIntervalPatterns.slice(5, 12)];
+        config.chordProbability = 0.3;
+        config.chordTypes = 'triads';
         break;
       case 3:
         config.durations = [0.5, 1, 2, 4];
         config.restProbability = 0.1;
         config.patterns = [...folkPatterns, ...classicalPatterns, ...wideIntervalPatterns];
+        config.chordProbability = 0.35;
+        config.chordTypes = 'all';
         break;
     }
   }
@@ -754,6 +802,52 @@ interface BeamState {
   beamNumber: number;
 }
 
+/**
+ * Get chord notes to add to a root note based on configuration
+ */
+function getChordNotes(
+  rootDegree: number,
+  keyName: string,
+  baseOctave: number,
+  chordTypes: 'none' | 'intervals' | 'triads' | 'all'
+): Array<{ step: string; alter: number; octave: number }> | undefined {
+  if (chordTypes === 'none') return undefined;
+
+  // Choose chord type based on configuration
+  let availableChords: number[][];
+  switch (chordTypes) {
+    case 'intervals':
+      availableChords = basicIntervals;
+      break;
+    case 'triads':
+      availableChords = [...basicIntervals, ...triadChords];
+      break;
+    case 'all':
+      availableChords = [...basicIntervals, ...triadChords];
+      break;
+    default:
+      return undefined;
+  }
+
+  // Pick a random chord pattern
+  const chordPattern = pick(availableChords);
+
+  // Convert chord degrees to actual notes (relative to root)
+  const chordNotes: Array<{ step: string; alter: number; octave: number }> = [];
+  for (const interval of chordPattern) {
+    if (interval === 1) continue; // Skip interval 1 (the root is already the melody note)
+
+    // Calculate the actual scale degree for this chord tone
+    // The interval is relative to scale degree 1, so we offset by root
+    const chordDegree = rootDegree + (interval - 1);
+
+    const noteData = scaleDegreeToNote(chordDegree, keyName, baseOctave);
+    chordNotes.push(noteData);
+  }
+
+  return chordNotes.length > 0 ? chordNotes : undefined;
+}
+
 function generateMelody(
   config: LevelConfig,
   beatsPerMeasure: number,
@@ -808,12 +902,21 @@ function generateMelody(
         extraAlter = pick([-1, 1]);
       }
 
-      const noteData = scaleDegreeToNote(degree, config.key.name.split(' ')[0], baseOctave);
+      const keyRoot = config.key.name.split(' ')[0];
+      const noteData = scaleDegreeToNote(degree, keyRoot, baseOctave);
+
+      // Possibly add chord notes (for longer durations only - not on eighth notes)
+      let chordNotes: Array<{ step: string; alter: number; octave: number }> | undefined;
+      if (config.chordProbability > 0 && dur >= 1 && Math.random() < config.chordProbability) {
+        chordNotes = getChordNotes(degree, keyRoot, baseOctave, config.chordTypes);
+      }
+
       notes.push({
         ...noteData,
         alter: noteData.alter + extraAlter,
         duration: dur,
         isRest: false,
+        chordNotes,
       });
 
       remainingBeats -= dur;
@@ -1093,7 +1196,8 @@ function noteToXML(
 `;
   }
 
-  return `      <note>
+  // Main note XML
+  let xml = `      <note>
         <pitch>
           <step>${note.step}</step>
 ${alterXml}          <octave>${note.octave}</octave>
@@ -1103,6 +1207,37 @@ ${alterXml}          <octave>${note.octave}</octave>
 ${accidentalXml}${beamXml}        <staff>${staff}</staff>
 ${fingeringXml}      </note>
 `;
+
+  // Add chord notes if present (they get <chord/> element to indicate simultaneity)
+  if (note.chordNotes && note.chordNotes.length > 0) {
+    for (const chordNote of note.chordNotes) {
+      let chordAlterXml = '';
+      if (chordNote.alter !== 0) {
+        chordAlterXml = `          <alter>${chordNote.alter}</alter>\n`;
+      }
+
+      let chordAccidentalXml = '';
+      if (chordNote.alter === 1) {
+        chordAccidentalXml = `        <accidental>sharp</accidental>\n`;
+      } else if (chordNote.alter === -1) {
+        chordAccidentalXml = `        <accidental>flat</accidental>\n`;
+      }
+
+      xml += `      <note>
+        <chord/>
+        <pitch>
+          <step>${chordNote.step}</step>
+${chordAlterXml}          <octave>${chordNote.octave}</octave>
+        </pitch>
+        <duration>${dur}</duration>
+        ${getNoteType(note.duration)}
+${chordAccidentalXml}        <staff>${staff}</staff>
+      </note>
+`;
+    }
+  }
+
+  return xml;
 }
 
 function getNoteType(duration: number): string {

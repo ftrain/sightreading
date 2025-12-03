@@ -777,6 +777,30 @@ function setupControls() {
   if (showFingeringCheckbox) {
     showFingeringCheckbox.addEventListener('change', () => {
       setIncludeFingering(showFingeringCheckbox.checked);
+      // Sync the toolbar button state
+      const fingeringBtn = document.getElementById('fingeringToggle');
+      if (fingeringBtn) {
+        fingeringBtn.classList.toggle('active', showFingeringCheckbox.checked);
+        fingeringBtn.setAttribute('aria-pressed', String(showFingeringCheckbox.checked));
+      }
+      // Regenerate to include/exclude fingering in notation
+      if (!isPlaying) {
+        generateAndRender();
+      }
+    });
+  }
+
+  // Fingering toggle button in control bar
+  const fingeringToggle = document.getElementById('fingeringToggle');
+  if (fingeringToggle) {
+    fingeringToggle.addEventListener('click', () => {
+      const isActive = fingeringToggle.classList.toggle('active');
+      fingeringToggle.setAttribute('aria-pressed', String(isActive));
+      setIncludeFingering(isActive);
+      // Sync the options panel checkbox
+      if (showFingeringCheckbox) {
+        showFingeringCheckbox.checked = isActive;
+      }
       // Regenerate to include/exclude fingering in notation
       if (!isPlaying) {
         generateAndRender();

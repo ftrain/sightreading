@@ -239,13 +239,16 @@ body {
    ============================================ */
 .theory-hint {
   max-width: 800px;
-  margin: var(--space-md) auto 0;
-  padding: var(--space-sm) var(--space-md);
+  margin: var(--space-lg) auto 0;
+  padding: var(--space-md) var(--space-lg);
   font-family: var(--font-serif);
-  font-size: 0.9rem;
+  font-size: 1.1rem;
   font-style: italic;
-  color: var(--text-muted);
+  color: var(--text);
   text-align: center;
+  background: rgba(139, 115, 85, 0.1);
+  border: 1px solid rgba(139, 115, 85, 0.2);
+  border-radius: 8px;
   transition: opacity var(--transition-med);
 }
 
@@ -410,6 +413,44 @@ body {
 }
 
 .options-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Fingering Toggle Button */
+.fingering-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.fingering-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.fingering-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.fingering-btn.active:hover {
+  background: var(--accent-light);
+  border-color: var(--accent-light);
+}
+
+.fingering-btn svg {
   width: 20px;
   height: 20px;
 }
