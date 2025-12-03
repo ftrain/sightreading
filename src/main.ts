@@ -29,7 +29,7 @@ let isCountingOff = false;
 let activeNotes: Set<string> = new Set();
 
 // MIDI devices
-let midiInputs: Map<string, WebMidi.MIDIInput> = new Map();
+let midiInputs: Map<string, MIDIInput> = new Map();
 let selectedMidiInput: string | null = localStorage.getItem('midiDeviceId');
 
 // Settings
@@ -388,7 +388,7 @@ function setupMIDI() {
   );
 }
 
-function updateMidiDevices(midiAccess: WebMidi.MIDIAccess) {
+function updateMidiDevices(midiAccess: MIDIAccess) {
   midiInputs.clear();
 
   for (const input of midiAccess.inputs.values()) {
