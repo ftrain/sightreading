@@ -1,259 +1,213 @@
+/* ============================================
+   SIGHT READING PRACTICE - SHEET MUSIC UX
+   Clean, elegant, pianistic design
+   ============================================ */
+
 * {
   box-sizing: border-box;
 }
 
 :root {
-  --bg: #0f0f1a;
-  --surface: #1a1a2e;
-  --primary: #e94560;
-  --correct: #00d4aa;
-  --wrong: #ff4757;
-  --text: #eee;
-  --text-muted: #888;
+  /* Warm, musical color palette */
+  --bg: #1a1a1a;
+  --bg-warm: #1e1d1b;
+  --surface: #242424;
+
+  /* Sheet music paper colors */
+  --paper: #f8f5f0;
+  --paper-shadow: rgba(0, 0, 0, 0.15);
+  --ink: #1a1a1a;
+
+  /* Accent colors - subtle and musical */
+  --accent: #8b7355;
+  --accent-light: #a08060;
+  --accent-glow: rgba(139, 115, 85, 0.3);
+
+  /* Feedback colors */
+  --current: #c9a227;
+  --correct: #5a9a6e;
+  --wrong: #b54a4a;
+
+  /* Text */
+  --text: #e8e4e0;
+  --text-muted: #8a8580;
+  --text-subtle: #5a5550;
+
+  /* Typography */
+  --font-serif: 'Crimson Pro', Georgia, 'Times New Roman', serif;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+  /* Spacing */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-med: 0.25s ease;
+}
+
+/* ============================================
+   BASE STYLES
+   ============================================ */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
 }
 
 body {
-  margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
-  background: var(--bg);
+  font-family: var(--font-sans);
+  background: var(--bg-warm);
   color: var(--text);
-  min-height: 100vh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #app {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  position: relative;
 }
 
-header {
-  padding: 1rem 2rem;
-  background: var(--surface);
-  border-bottom: 2px solid var(--primary);
+/* ============================================
+   MUSIC STAND (Main Content Area)
+   ============================================ */
+#musicStand {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-lg);
+  padding-bottom: 100px; /* Space for control bar */
+}
+
+/* Score Header - like a musical title page */
+#scoreHeader {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  margin-bottom: var(--space-lg);
+  padding: 0 var(--space-md);
 }
 
-header h1 {
-  margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+.score-title h1 {
+  font-family: var(--font-serif);
+  font-size: 1.75rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  margin: 0 0 var(--space-xs) 0;
+  color: var(--text);
 }
 
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+.lesson-subtitle {
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  font-style: italic;
+  color: var(--text-muted);
 }
 
-.level-info {
+.score-meta {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.25rem;
+  gap: var(--space-xs);
 }
 
-#levelDisplay {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--primary);
-  padding: 0.25rem 1rem;
-  background: rgba(233, 69, 96, 0.1);
-  border-radius: 20px;
-  border: 1px solid var(--primary);
+.level-badge {
+  font-family: var(--font-serif);
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--accent-light);
+  padding: var(--space-xs) var(--space-md);
+  background: rgba(139, 115, 85, 0.1);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
 }
 
-#lessonInfo {
+.progress-text {
   font-size: 0.75rem;
   color: var(--text-muted);
-  text-align: right;
 }
 
-#progressInfo {
-  font-size: 0.7rem;
-  color: var(--correct);
-  text-align: right;
-}
-
-.github-link {
-  color: var(--text-muted);
-  transition: color 0.15s;
+/* ============================================
+   SCORE CONTAINER - The Sheet Music
+   ============================================ */
+#scoreContainer {
+  flex: 1;
   display: flex;
   align-items: center;
+  justify-content: center;
+  position: relative;
 }
 
-.github-link:hover {
-  color: var(--text);
-}
-
-#controls {
+#notation {
+  width: 100%;
+  max-width: 1000px;
   display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  padding: 1rem 2rem;
-  background: var(--surface);
-  border-bottom: 1px solid #333;
-  flex-wrap: wrap;
+  justify-content: center;
 }
 
-.control-group {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+#notation svg {
+  width: 100%;
+  height: auto;
+  background: var(--paper);
+  border-radius: 2px;
+  padding: var(--space-lg) var(--space-xl);
+
+  /* Elegant paper shadow */
+  box-shadow:
+    0 1px 3px var(--paper-shadow),
+    0 4px 12px var(--paper-shadow),
+    0 12px 40px var(--paper-shadow);
 }
 
-.control-group label {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+/* Loading state */
+#notation:empty::after {
+  content: '';
 }
 
-.level-controls {
-  gap: 0.25rem;
-}
-
-.level-btn {
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  font-size: 1.25rem;
-  line-height: 1;
-  border-radius: 50%;
-  background: #333;
-}
-
-.level-btn:hover {
-  background: #444;
-}
-
-input[type='number'] {
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid #333;
-  padding: 0.5rem;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  width: 70px;
-  text-align: center;
-}
-
-input[type='number']:focus {
-  outline: none;
-  border-color: var(--primary);
-}
-
-input[type='checkbox'] {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--primary);
-  cursor: pointer;
-}
-
-input[type='range'] {
-  width: 80px;
-  height: 6px;
-  accent-color: var(--primary);
-  cursor: pointer;
-}
-
-select {
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid #333;
-  padding: 0.5rem 1rem;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  cursor: pointer;
-  max-width: 180px;
-}
-
-select:focus {
-  outline: none;
-  border-color: var(--primary);
-}
-
-button {
-  background: var(--primary);
-  color: white;
-  border: none;
-  padding: 0.6rem 2rem;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-button:hover {
-  filter: brightness(1.1);
-  transform: translateY(-1px);
-}
-
-button.playing {
-  background: #333;
-}
-
+/* ============================================
+   COUNTOFF DISPLAY
+   ============================================ */
 #countoff {
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 10rem;
-  font-weight: 700;
-  color: var(--primary);
+  font-family: var(--font-serif);
+  font-size: 8rem;
+  font-weight: 600;
+  color: var(--current);
   opacity: 0;
-  transition: opacity 0.1s;
   pointer-events: none;
   z-index: 100;
-  text-shadow: 0 0 60px rgba(233, 69, 96, 0.6);
+  text-shadow: 0 0 40px rgba(201, 162, 39, 0.4);
+  transition: opacity 0.1s;
 }
 
 #countoff.visible {
   opacity: 1;
 }
 
-#notation {
-  flex: 1;
-  padding: 2rem;
-  overflow-x: auto;
-  overflow-y: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(180deg, var(--bg) 0%, #151525 100%);
-}
-
-#notation svg {
-  width: 100%;
-  max-width: 100%;
-  height: auto;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
-  padding: 1.5rem;
-}
-
-/* Note highlighting */
+/* ============================================
+   NOTE HIGHLIGHTING
+   ============================================ */
 .note.current .notehead *,
 .note.current .stem,
 .note.current .flag *,
 .note.current .accid * {
-  fill: var(--primary) !important;
-  stroke: var(--primary) !important;
-  transition: fill 0.1s, stroke 0.1s;
+  fill: var(--current) !important;
+  stroke: var(--current) !important;
 }
 
-/* Rest highlighting */
 .rest.current * {
-  fill: var(--primary) !important;
+  fill: var(--current) !important;
 }
 
-/* Correct note - nice blue/teal glow */
 .note.correct .notehead *,
 .note.correct .stem,
 .note.correct .flag *,
@@ -262,11 +216,6 @@ button.playing {
   stroke: var(--correct) !important;
 }
 
-.note.correct .notehead {
-  filter: drop-shadow(0 0 8px var(--correct)) drop-shadow(0 0 16px var(--correct));
-}
-
-/* Wrong note - red glow */
 .note.wrong .notehead *,
 .note.wrong .stem,
 .note.wrong .flag *,
@@ -275,288 +224,563 @@ button.playing {
   stroke: var(--wrong) !important;
 }
 
-.note.wrong .notehead {
-  filter: drop-shadow(0 0 8px var(--wrong)) drop-shadow(0 0 12px var(--wrong));
-}
-
-/* Past notes fade out - including accidentals */
 .note.past .notehead *,
 .note.past .stem,
 .note.past .flag *,
 .note.past .accid *,
 .rest.past * {
-  fill: #aaa !important;
-  stroke: #aaa !important;
+  fill: #999 !important;
+  stroke: #999 !important;
+  opacity: 0.5;
+}
+
+/* ============================================
+   THEORY HINTS
+   ============================================ */
+.theory-hint {
+  max-width: 800px;
+  margin: var(--space-md) auto 0;
+  padding: var(--space-sm) var(--space-md);
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  font-style: italic;
+  color: var(--text-muted);
+  text-align: center;
+  opacity: 0;
+  transition: opacity var(--transition-med);
+}
+
+.theory-hint.visible {
+  opacity: 1;
+}
+
+/* ============================================
+   FLOATING CONTROL BAR
+   ============================================ */
+#controlBar {
+  position: fixed;
+  bottom: var(--space-lg);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 50px;
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  z-index: 50;
+  transition: opacity var(--transition-med), transform var(--transition-med);
+}
+
+.control-section {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* Transport (Play/Stop) */
+.play-btn {
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  border: none;
+  border-radius: 50%;
+  color: white;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.play-btn:hover {
+  background: var(--accent-light);
+  transform: scale(1.05);
+}
+
+.play-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.play-btn .icon-stop {
+  display: none;
+}
+
+.play-btn.playing .icon-play {
+  display: none;
+}
+
+.play-btn.playing .icon-stop {
+  display: block;
+}
+
+/* Tempo Control */
+.control-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-subtle);
+}
+
+.tempo-control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.tempo-control input[type='number'] {
+  width: 50px;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.tempo-control input[type='number']:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.tempo-unit {
+  font-size: 0.7rem;
+  color: var(--text-subtle);
+}
+
+/* Level Controls */
+.level-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.level-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.level-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.level-indicator {
+  font-size: 0.85rem;
+  color: var(--text);
+  min-width: 70px;
+  text-align: center;
+}
+
+/* Options Button */
+.options-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.options-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.options-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ============================================
+   OPTIONS PANEL
+   ============================================ */
+.options-panel {
+  position: fixed;
+  bottom: 100px;
+  right: var(--space-lg);
+  width: 280px;
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  z-index: 60;
+  overflow: hidden;
+}
+
+.options-panel[hidden] {
+  display: none;
+}
+
+.options-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-md);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.options-header h2 {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+.close-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-muted);
+  font-size: 1.25rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.options-group {
+  padding: var(--space-md);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.options-group:last-of-type {
+  border-bottom: none;
+}
+
+.options-group h3 {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-subtle);
+  margin: 0 0 var(--space-sm) 0;
+}
+
+.option-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-xs) 0;
+  cursor: pointer;
+}
+
+.option-row span {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.option-row:hover span {
+  color: var(--text);
+}
+
+.option-row input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.option-row input[type='range'] {
+  width: 80px;
+  height: 4px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.options-group select {
+  width: 100%;
+  padding: var(--space-sm);
+  background: var(--bg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.options-group select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.options-footer {
+  padding: var(--space-md);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  text-align: center;
+}
+
+.github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.github-link:hover {
+  color: var(--text);
+}
+
+/* ============================================
+   FINGERING PANEL
+   ============================================ */
+.fingering-panel {
+  position: fixed;
+  bottom: 100px;
+  left: var(--space-lg);
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: var(--space-md);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  z-index: 40;
+}
+
+.fingering-panel[hidden] {
+  display: none;
+}
+
+.fingering-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.fingering-hand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.fingering-panel .hand-label {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-subtle);
+  width: 30px;
+}
+
+.fingering-numbers {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  color: var(--accent-light);
+  letter-spacing: 0.3em;
+}
+
+.fingering-tips {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fingering-tips:empty {
+  display: none;
+}
+
+/* ============================================
+   PLAYING STATE
+   ============================================ */
+body.is-playing #controlBar {
   opacity: 0.6;
 }
 
-/* Loading state */
-#notation:empty::after {
-  content: 'Loading...';
-  color: var(--text-muted);
-  font-size: 1.5rem;
-}
-
-/* MIDI control group - for hiding on mobile */
-.midi-control-group {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+body.is-playing #controlBar:hover {
+  opacity: 1;
 }
 
 /* ============================================
-   RESPONSIVE DESIGN - TABLET
+   RESPONSIVE - TABLET
    ============================================ */
-@media (max-width: 1024px) {
-  header {
-    padding: 0.75rem 1.5rem;
+@media (max-width: 900px) {
+  #musicStand {
+    padding: var(--space-md);
+    padding-bottom: 90px;
   }
 
-  #controls {
-    gap: 1rem;
-    padding: 0.75rem 1.5rem;
+  #scoreHeader {
+    flex-direction: column;
+    gap: var(--space-sm);
+    text-align: center;
   }
 
-  /* Reduce MIDI prominence on tablet */
-  .midi-control-group {
-    order: 10; /* Push to end */
+  .score-meta {
+    align-items: center;
   }
 
-  .midi-control-group select {
-    max-width: 140px;
-    font-size: 0.75rem;
-    padding: 0.4rem 0.6rem;
+  #controlBar {
+    gap: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+  }
+
+  .control-label {
+    display: none;
+  }
+
+  .level-indicator {
+    font-size: 0.8rem;
+    min-width: 60px;
+  }
+
+  .options-panel {
+    right: var(--space-md);
+    width: 260px;
   }
 }
 
 /* ============================================
-   RESPONSIVE DESIGN - MOBILE PORTRAIT
+   RESPONSIVE - MOBILE LANDSCAPE
    ============================================ */
-@media (max-width: 768px) {
-  header {
-    padding: 0.5rem 1rem;
-    flex-wrap: wrap;
+@media (max-width: 900px) and (orientation: landscape) {
+  #musicStand {
+    padding: var(--space-sm) var(--space-md);
+    padding-bottom: 70px;
   }
 
-  header h1 {
-    font-size: 1.1rem;
-  }
-
-  .level-info {
+  #scoreHeader {
     flex-direction: row;
-    gap: 0.5rem;
+    margin-bottom: var(--space-sm);
   }
 
-  #levelDisplay {
-    font-size: 1rem;
-    padding: 0.2rem 0.75rem;
+  .score-title h1 {
+    font-size: 1.25rem;
   }
 
-  #lessonInfo {
-    display: none; /* Hide on very small screens */
-  }
-
-  #controls {
-    padding: 0.5rem 1rem;
-    gap: 0.75rem;
-  }
-
-  .control-group label {
-    font-size: 0.65rem;
-  }
-
-  input[type='number'] {
-    width: 55px;
-    padding: 0.4rem;
+  .lesson-subtitle {
     font-size: 0.8rem;
   }
 
-  input[type='range'] {
-    width: 60px;
+  #notation svg {
+    padding: var(--space-sm) var(--space-md);
+    max-height: calc(100vh - 140px);
   }
 
-  button {
-    padding: 0.5rem 1.25rem;
-    font-size: 0.75rem;
+  #controlBar {
+    bottom: var(--space-sm);
+    padding: var(--space-xs) var(--space-md);
+    gap: var(--space-md);
+  }
+
+  .play-btn {
+    width: 40px;
+    height: 40px;
   }
 
   .level-btn {
-    width: 32px;
-    height: 32px;
-    font-size: 1.1rem;
+    width: 28px;
+    height: 28px;
   }
 
-  #notation {
-    padding: 0.75rem;
+  #countoff {
+    font-size: 5rem;
+  }
+
+  .theory-hint {
+    font-size: 0.8rem;
+    margin-top: var(--space-sm);
+  }
+
+  .midi-options {
+    display: none;
+  }
+}
+
+/* ============================================
+   RESPONSIVE - MOBILE PORTRAIT
+   ============================================ */
+@media (max-width: 600px) {
+  #musicStand {
+    padding: var(--space-sm);
+    padding-bottom: 80px;
+  }
+
+  #scoreHeader {
+    padding: 0;
+  }
+
+  .score-title h1 {
+    font-size: 1.25rem;
+  }
+
+  .lesson-subtitle {
+    font-size: 0.8rem;
   }
 
   #notation svg {
-    padding: 0.75rem;
-    border-radius: 8px;
+    padding: var(--space-md);
+    border-radius: 0;
+  }
+
+  #controlBar {
+    left: var(--space-sm);
+    right: var(--space-sm);
+    transform: none;
+    width: auto;
+    border-radius: 24px;
+    justify-content: space-between;
+  }
+
+  .tempo-control input[type='number'] {
+    width: 44px;
+  }
+
+  .level-indicator {
+    display: none;
   }
 
   #countoff {
     font-size: 6rem;
   }
 
-  /* Hide MIDI controls on mobile portrait - MIDI keyboards are rare on phones */
-  .midi-control-group {
-    display: none;
-  }
-}
-
-/* ============================================
-   RESPONSIVE DESIGN - MOBILE LANDSCAPE (4-bar mode)
-   ============================================ */
-@media (max-width: 900px) and (orientation: landscape) {
-  #app {
-    min-height: 100vh;
-    max-height: 100vh;
-    overflow: hidden;
+  .options-panel {
+    left: var(--space-sm);
+    right: var(--space-sm);
+    width: auto;
+    bottom: 80px;
   }
 
-  header {
-    padding: 0.35rem 1rem;
-    min-height: auto;
+  .fingering-panel {
+    left: var(--space-sm);
+    right: var(--space-sm);
+    bottom: 80px;
   }
 
-  header h1 {
-    font-size: 1rem;
-  }
-
-  .header-right {
-    gap: 0.5rem;
-  }
-
-  #levelDisplay {
-    font-size: 0.9rem;
-    padding: 0.15rem 0.6rem;
-  }
-
-  #lessonInfo,
-  #progressInfo {
-    font-size: 0.6rem;
-  }
-
-  .github-link svg {
-    width: 16px;
-    height: 16px;
-  }
-
-  #controls {
-    padding: 0.35rem 1rem;
-    gap: 0.75rem;
-    min-height: auto;
-  }
-
-  .control-group {
-    gap: 0.35rem;
-  }
-
-  .control-group label {
-    font-size: 0.6rem;
-  }
-
-  input[type='number'] {
-    width: 50px;
-    padding: 0.25rem;
-    font-size: 0.75rem;
-  }
-
-  input[type='checkbox'] {
-    width: 14px;
-    height: 14px;
-  }
-
-  input[type='range'] {
-    width: 50px;
-    height: 4px;
-  }
-
-  select {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.7rem;
-  }
-
-  button {
-    padding: 0.35rem 1rem;
-    font-size: 0.7rem;
-  }
-
-  .level-btn {
-    width: 28px;
-    height: 28px;
-    font-size: 1rem;
-  }
-
-  #countoff {
-    font-size: 4rem;
-  }
-
-  /* Notation takes remaining space in landscape */
-  #notation {
-    flex: 1;
-    padding: 0.5rem;
-    align-items: flex-start;
-    overflow-y: hidden;
-  }
-
-  #notation svg {
-    padding: 0.5rem;
-    border-radius: 6px;
-    max-height: calc(100vh - 100px);
-  }
-
-  /* MIDI controls hidden in mobile landscape */
-  .midi-control-group {
-    display: none;
-  }
-
-  /* Volume slider hidden in compact landscape */
-  .volume-control-group {
-    display: none;
-  }
-}
-
-/* ============================================
-   MOBILE MODE (via JS class)
-   Triggered on touch devices or narrow landscape
-   ============================================ */
-body.mobile-mode {
-  /* Ensure mobile optimizations even when media queries don't match */
-}
-
-body.mobile-mode .midi-control-group {
-  display: none !important;
-}
-
-body.mobile-mode #notation svg {
-  /* Optimized for 4-bar display */
-  padding: 0.5rem;
-}
-
-/* ============================================
-   VERY SMALL DEVICES (phones < 400px)
-   ============================================ */
-@media (max-width: 400px) {
-  header h1 {
-    font-size: 1rem;
-  }
-
-  #levelDisplay {
-    font-size: 0.85rem;
-  }
-
-  #controls {
-    gap: 0.5rem;
-  }
-
-  .control-group {
-    gap: 0.25rem;
-  }
-
-  /* Hide less essential controls on tiny screens */
-  .hands-separate-group {
+  .midi-options {
     display: none;
   }
 }
@@ -565,45 +789,35 @@ body.mobile-mode #notation svg {
    TOUCH DEVICE OPTIMIZATIONS
    ============================================ */
 @media (hover: none) and (pointer: coarse) {
-  /* Larger touch targets */
-  button {
-    min-height: 44px;
+  .play-btn,
+  .level-btn,
+  .options-btn,
+  .close-btn {
     min-width: 44px;
-  }
-
-  .level-btn {
-    min-width: 40px;
-    min-height: 40px;
-  }
-
-  input[type='checkbox'] {
-    min-width: 22px;
-    min-height: 22px;
-  }
-
-  select {
     min-height: 44px;
   }
 
-  /* Remove hover effects on touch */
-  button:hover {
+  .play-btn:hover,
+  .level-btn:hover,
+  .options-btn:hover {
     transform: none;
-    filter: none;
+    background: inherit;
   }
 
-  button:active {
-    filter: brightness(0.9);
-    transform: scale(0.98);
+  .play-btn:active {
+    transform: scale(0.95);
   }
 }
 
 /* ============================================
-   HIGH DPI / RETINA DISPLAYS
+   REDUCED MOTION
    ============================================ */
-@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
-  #notation svg {
-    /* Ensure crisp rendering on high DPI */
-    image-rendering: crisp-edges;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
   }
 }
 
@@ -613,161 +827,34 @@ body.mobile-mode #notation svg {
 @media print {
   body {
     background: white;
-    color: black;
   }
 
-  header,
-  #controls,
-  #countoff {
-    display: none;
+  #controlBar,
+  #optionsPanel,
+  #countoff,
+  .fingering-panel,
+  .theory-hint {
+    display: none !important;
   }
 
-  #notation {
+  #musicStand {
     padding: 0;
-    background: white;
   }
 
   #notation svg {
     box-shadow: none;
-    border: 1px solid #ccc;
+    border: 1px solid #ddd;
   }
 }
 
 /* ============================================
-   REDUCED MOTION PREFERENCE
+   ACCESSIBILITY
    ============================================ */
-@media (prefers-reduced-motion: reduce) {
-  * {
-    transition: none !important;
-    animation: none !important;
-  }
-}
-
-/* ============================================
-   THEORY HINTS & FINGERING DISPLAY
-   ============================================ */
-.theory-hint {
-  padding: 0.75rem 2rem;
-  color: #a8e6cf;
-  font-size: 0.85rem;
-  background: rgba(168, 230, 207, 0.08);
-  border-left: 3px solid #a8e6cf;
-  margin: 0 2rem;
-  border-radius: 0 8px 8px 0;
-  display: none;
-}
-
-.theory-hint.visible {
-  display: block;
-}
-
-.fingering-display {
-  padding: 0.75rem 2rem;
-  background: var(--surface);
-  border-top: 1px solid #333;
-  display: none;
-}
-
-.fingering-display.visible {
-  display: block;
-}
-
-.fingering-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.25rem;
-}
-
-.hand-label {
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  width: 30px;
-}
-
-.fingering-numbers {
-  font-family: monospace;
-  font-size: 0.9rem;
-  color: var(--primary);
-  letter-spacing: 0.25em;
-}
-
-.fingering-tips {
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid #333;
-}
-
-.fingering-tips:empty {
-  display: none;
-}
-
-/* Mobile optimizations for hints */
-@media (max-width: 768px) {
-  .theory-hint {
-    padding: 0.5rem 1rem;
-    margin: 0 1rem;
-    font-size: 0.75rem;
-  }
-
-  .fingering-display {
-    padding: 0.5rem 1rem;
-  }
-
-  .fingering-numbers {
-    font-size: 0.8rem;
-  }
-
-  /* Hide hints/fingering checkboxes on mobile portrait */
-  .fingering-group,
-  .hints-group {
-    display: none;
-  }
-}
-
-@media (max-width: 900px) and (orientation: landscape) {
-  .theory-hint {
-    padding: 0.35rem 1rem;
-    margin: 0 1rem;
-    font-size: 0.7rem;
-  }
-
-  .fingering-display {
-    padding: 0.35rem 1rem;
-    font-size: 0.7rem;
-  }
-
-  .fingering-numbers {
-    font-size: 0.75rem;
-    letter-spacing: 0.15em;
-  }
-}
-
-/* ============================================
-   DARK MODE PREFERENCE (already dark, but explicit)
-   ============================================ */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f0f1a;
-    --surface: #1a1a2e;
-  }
-}
-
-/* ============================================
-   ACCESSIBILITY - FOCUS STATES
-   ============================================ */
-button:focus-visible,
-input:focus-visible,
-select:focus-visible {
-  outline: 2px solid var(--primary);
+:focus-visible {
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-/* ============================================
-   UTILITY CLASSES
-   ============================================ */
 .sr-only {
   position: absolute;
   width: 1px;

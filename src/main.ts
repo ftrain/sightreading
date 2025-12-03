@@ -308,32 +308,41 @@ function renderCurrentHand() {
 }
 
 function updateHandIndicator() {
-  const levelDisplay = document.getElementById('levelDisplay');
-  if (levelDisplay) {
+  const levelIndicator = document.getElementById('levelIndicator');
+  if (levelIndicator) {
     const level = `Level ${getFullLevelString()}`;
     if (handsSeparate) {
       const modeLabel =
         currentHandMode === 'rh' ? 'RH' : currentHandMode === 'lh' ? 'LH' : 'Both';
-      levelDisplay.textContent = `${level} (${modeLabel})`;
+      levelIndicator.textContent = `${level} (${modeLabel})`;
     } else {
-      levelDisplay.textContent = level;
+      levelIndicator.textContent = level;
     }
   }
 }
 
 function updateLevelDisplay() {
   const levelDisplay = document.getElementById('levelDisplay');
+  const levelIndicator = document.getElementById('levelIndicator');
   const lessonInfo = document.getElementById('lessonInfo');
   const progressInfo = document.getElementById('progressInfo');
 
+  const levelString = getFullLevelString();
+  const levelText = `Level ${levelString}`;
+
+  // Update the badge in the score header
   if (levelDisplay) {
-    const levelText = `Level ${getFullLevelString()}`;
+    levelDisplay.textContent = levelString;
+  }
+
+  // Update the control bar indicator
+  if (levelIndicator) {
     if (handsSeparate) {
       const modeLabel =
         currentHandMode === 'rh' ? 'RH' : currentHandMode === 'lh' ? 'LH' : 'Both';
-      levelDisplay.textContent = `${levelText} (${modeLabel})`;
+      levelIndicator.textContent = `${levelText} (${modeLabel})`;
     } else {
-      levelDisplay.textContent = levelText;
+      levelIndicator.textContent = levelText;
     }
   }
 
@@ -369,7 +378,7 @@ function updateTheoryHint() {
   if (!hintEl) return;
 
   if (!showHints) {
-    hintEl.classList.remove('visible');
+    hintEl.hidden = true;
     return;
   }
 
@@ -379,9 +388,9 @@ function updateTheoryHint() {
 
   if (summary) {
     hintEl.textContent = summary;
-    hintEl.classList.add('visible');
+    hintEl.hidden = false;
   } else {
-    hintEl.classList.remove('visible');
+    hintEl.hidden = true;
   }
 }
 
@@ -394,7 +403,7 @@ function updateFingeringDisplay() {
   if (!fingeringEl || !rhFingeringEl || !lhFingeringEl) return;
 
   if (!showFingering) {
-    fingeringEl.classList.remove('visible');
+    fingeringEl.hidden = true;
     return;
   }
 
@@ -411,7 +420,7 @@ function updateFingeringDisplay() {
     tipsEl.textContent = allTips.slice(0, 2).join(' • '); // Limit to 2 tips
   }
 
-  fingeringEl.classList.add('visible');
+  fingeringEl.hidden = false;
 }
 
 function groupNotesByPosition() {
@@ -736,6 +745,38 @@ function setupControls() {
   const levelUpBtn = document.getElementById('levelUp');
   const levelDownBtn = document.getElementById('levelDown');
 
+  // Options panel toggle
+  const optionsToggle = document.getElementById('optionsToggle');
+  const optionsPanel = document.getElementById('optionsPanel');
+  const optionsClose = document.getElementById('optionsClose');
+
+  if (optionsToggle && optionsPanel) {
+    optionsToggle.addEventListener('click', () => {
+      const isHidden = optionsPanel.hidden;
+      optionsPanel.hidden = !isHidden;
+      optionsToggle.setAttribute('aria-expanded', String(!isHidden));
+    });
+
+    if (optionsClose) {
+      optionsClose.addEventListener('click', () => {
+        optionsPanel.hidden = true;
+        optionsToggle.setAttribute('aria-expanded', 'false');
+      });
+    }
+
+    // Close panel when clicking outside
+    document.addEventListener('click', (e) => {
+      if (
+        !optionsPanel.hidden &&
+        !optionsPanel.contains(e.target as Node) &&
+        !optionsToggle.contains(e.target as Node)
+      ) {
+        optionsPanel.hidden = true;
+        optionsToggle.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+
   bpmInput.addEventListener('change', () => {
     bpm = parseInt(bpmInput.value) || 30;
     setBpm(bpm); // Sync with musicGenerator's tempo tracking
@@ -840,8 +881,8 @@ async function start() {
 
   isPlaying = true;
   const playPauseBtn = document.getElementById('playPause')!;
-  playPauseBtn.textContent = 'Stop';
   playPauseBtn.classList.add('playing');
+  playPauseBtn.setAttribute('aria-label', 'Stop');
 
   currentBeatIndex = 0;
   hadMistake = false;
@@ -1033,8 +1074,8 @@ function stop() {
   isPlaying = false;
   isCountingOff = false;
   const playPauseBtn = document.getElementById('playPause')!;
-  playPauseBtn.textContent = 'Start';
   playPauseBtn.classList.remove('playing');
+  playPauseBtn.setAttribute('aria-label', 'Start');
 
   updateCountoffDisplay(0);
 

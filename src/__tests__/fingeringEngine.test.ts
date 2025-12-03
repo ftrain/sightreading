@@ -99,9 +99,9 @@ describe('fingeringEngine', () => {
     it('should format fingering as space-separated numbers', () => {
       const suggestion = {
         notes: [
-          { finger: 1, hand: 'right' as const, note: 'C4', midiNote: 60 },
-          { finger: 2, hand: 'right' as const, note: 'D4', midiNote: 62 },
-          { finger: 3, hand: 'right' as const, note: 'E4', midiNote: 64 },
+          { finger: 1 as const, hand: 'right' as const, note: 'C4', midiNote: 60 },
+          { finger: 2 as const, hand: 'right' as const, note: 'D4', midiNote: 62 },
+          { finger: 3 as const, hand: 'right' as const, note: 'E4', midiNote: 64 },
         ],
         difficulty: 2,
         tips: [],

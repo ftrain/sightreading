@@ -4,87 +4,136 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Practice sight reading piano music with progressive lessons. From beginner whole notes to advanced rhythms, folk melodies, and classical patterns." />
-    <meta name="theme-color" content="#0f0f1a" />
+    <meta name="theme-color" content="#1a1a1a" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <title>Sight Reading Practice</title>
   </head>
   <body>
     <div id="app">
-      <header>
-        <h1>Sight Reading</h1>
-        <div class="header-right">
-          <div class="level-info">
-            <span id="levelDisplay">Level 1a</span>
-            <span id="lessonInfo">C and G only - whole notes</span>
-            <span id="progressInfo">3 more to advance</span>
+      <!-- Music Stand / Score Area -->
+      <main id="musicStand">
+        <div id="scoreHeader">
+          <div class="score-title">
+            <h1>Sight Reading</h1>
+            <span id="lessonInfo" class="lesson-subtitle">C and G only — whole notes</span>
           </div>
-          <a href="https://github.com/ftrain/sightreading" target="_blank" rel="noopener" class="github-link" title="View on GitHub">
-            <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true">
-              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
-            </svg>
-            <span class="sr-only">GitHub</span>
-          </a>
-        </div>
-      </header>
-
-      <div id="controls">
-        <div class="control-group">
-          <label for="bpm">BPM</label>
-          <input type="number" id="bpm" value="30" min="20" max="200" step="5" aria-describedby="bpm-desc" />
+          <div class="score-meta">
+            <span id="levelDisplay" class="level-badge">1a</span>
+            <span id="progressInfo" class="progress-text"></span>
+          </div>
         </div>
 
-        <div class="control-group">
-          <label for="metronome">Metronome</label>
-          <input type="checkbox" id="metronome" checked />
+        <div id="scoreContainer">
+          <div id="countoff" aria-live="polite" aria-atomic="true"></div>
+          <div id="notation" role="img" aria-label="Music notation for sight reading practice"></div>
         </div>
 
-        <div class="control-group volume-control-group">
-          <label for="metronomeVolume">Vol</label>
-          <input type="range" id="metronomeVolume" min="0" max="100" value="50" aria-label="Metronome volume" />
+        <div id="theoryHint" class="theory-hint" aria-live="polite"></div>
+      </main>
+
+      <!-- Floating Control Bar -->
+      <div id="controlBar">
+        <div class="control-section transport">
+          <button id="playPause" class="play-btn" aria-label="Start">
+            <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            <svg class="icon-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
+          </button>
         </div>
 
-        <div class="control-group hands-separate-group">
-          <label for="handsSeparate">Hands Separate</label>
-          <input type="checkbox" id="handsSeparate" />
+        <div class="control-section tempo">
+          <label for="bpm" class="control-label">Tempo</label>
+          <div class="tempo-control">
+            <input type="number" id="bpm" value="30" min="20" max="200" step="5" />
+            <span class="tempo-unit">BPM</span>
+          </div>
         </div>
 
-        <div class="control-group fingering-group">
-          <label for="showFingering">Fingering</label>
-          <input type="checkbox" id="showFingering" />
+        <div class="control-section level">
+          <button id="levelDown" class="level-btn" aria-label="Previous level">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <span class="level-indicator" id="levelIndicator">Level 1a</span>
+          <button id="levelUp" class="level-btn" aria-label="Next level">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
         </div>
 
-        <div class="control-group hints-group">
-          <label for="showHints">Hints</label>
-          <input type="checkbox" id="showHints" checked />
+        <div class="control-section options">
+          <button id="optionsToggle" class="options-btn" aria-label="Options" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Options Panel (hidden by default) -->
+      <div id="optionsPanel" class="options-panel" hidden>
+        <div class="options-header">
+          <h2>Options</h2>
+          <button id="optionsClose" class="close-btn" aria-label="Close options">×</button>
         </div>
 
-        <div class="control-group midi-control-group">
-          <label for="midiInput">MIDI</label>
+        <div class="options-group">
+          <h3>Playback</h3>
+          <label class="option-row">
+            <span>Metronome</span>
+            <input type="checkbox" id="metronome" checked />
+          </label>
+          <label class="option-row">
+            <span>Metronome Volume</span>
+            <input type="range" id="metronomeVolume" min="0" max="100" value="50" />
+          </label>
+        </div>
+
+        <div class="options-group">
+          <h3>Practice Mode</h3>
+          <label class="option-row">
+            <span>Hands Separate</span>
+            <input type="checkbox" id="handsSeparate" />
+          </label>
+        </div>
+
+        <div class="options-group">
+          <h3>Learning Aids</h3>
+          <label class="option-row">
+            <span>Show Hints</span>
+            <input type="checkbox" id="showHints" checked />
+          </label>
+          <label class="option-row">
+            <span>Show Fingering</span>
+            <input type="checkbox" id="showFingering" />
+          </label>
+        </div>
+
+        <div class="options-group midi-options">
+          <h3>MIDI Input</h3>
           <select id="midiInput" aria-label="Select MIDI input device">
             <option value="">No MIDI Device</option>
           </select>
         </div>
 
-        <div class="control-group level-controls">
-          <button id="levelDown" class="level-btn" aria-label="Decrease level">−</button>
-          <button id="levelUp" class="level-btn" aria-label="Increase level">+</button>
+        <div class="options-footer">
+          <a href="https://github.com/ftrain/sightreading" target="_blank" rel="noopener" class="github-link">
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            View on GitHub
+          </a>
         </div>
-
-        <button id="playPause">Start</button>
       </div>
 
-      <div id="countoff" aria-live="polite" aria-atomic="true"></div>
-      <div id="notation" role="img" aria-label="Music notation for sight reading practice"></div>
-      <div id="theoryHint" class="theory-hint" aria-live="polite"></div>
-      <div id="fingeringDisplay" class="fingering-display" aria-live="polite">
-        <div class="fingering-row">
-          <span class="hand-label">RH:</span>
-          <span id="rhFingering" class="fingering-numbers"></span>
-        </div>
-        <div class="fingering-row">
-          <span class="hand-label">LH:</span>
-          <span id="lhFingering" class="fingering-numbers"></span>
+      <!-- Fingering Display (floating) -->
+      <div id="fingeringDisplay" class="fingering-panel" hidden>
+        <div class="fingering-content">
+          <div class="fingering-hand">
+            <span class="hand-label">R.H.</span>
+            <span id="rhFingering" class="fingering-numbers"></span>
+          </div>
+          <div class="fingering-hand">
+            <span class="hand-label">L.H.</span>
+            <span id="lhFingering" class="fingering-numbers"></span>
+          </div>
         </div>
         <div id="fingeringTips" class="fingering-tips"></div>
       </div>
