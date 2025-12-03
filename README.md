@@ -1,5 +1,7 @@
 # Sight Reading Practice
 
+**[Try it live](https://ftrain.github.io/sightreading)** | [GitHub](https://github.com/ftrain/sightreading)
+
 A web-based sight reading practice app for piano. Generates infinite procedural music and helps you practice reading notation with real-time feedback.
 
 ## Features
