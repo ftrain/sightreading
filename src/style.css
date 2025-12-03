@@ -42,6 +42,12 @@ header h1 {
   letter-spacing: -0.02em;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 #levelDisplay {
   font-size: 1.25rem;
   font-weight: 600;
@@ -50,6 +56,17 @@ header h1 {
   background: rgba(233, 69, 96, 0.1);
   border-radius: 20px;
   border: 1px solid var(--primary);
+}
+
+.github-link {
+  color: var(--text-muted);
+  transition: color 0.15s;
+  display: flex;
+  align-items: center;
+}
+
+.github-link:hover {
+  color: var(--text);
 }
 
 #controls {
