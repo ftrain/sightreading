@@ -155,19 +155,17 @@ function updateVerovioOptions() {
 
   toolkit.setOptions({
     pageWidth: width,
-    pageHeight: 600, // Compact height for single-line display
+    pageHeight: 800,
     scale: scale,
     adjustPageHeight: true,
     footer: 'none',
     header: 'none',
-    breaks: 'encoded',
-    // Very generous spacing to prevent eighth note compression
-    spacingNonLinear: 0.6, // Less aggressive compression of shorter notes
-    spacingLinear: 0.35, // More proportional spacing
-    minMeasureWidth: 180, // Wider minimum measure width
-    spacingStaff: 6, // Space between staves in a system
-    spacingSystem: 4, // Space between systems
-    lyricSize: 4.5, // Smaller lyrics if any
+    breaks: 'none', // Let Verovio fit all 4 measures on one line
+    // Spacing for eighth notes
+    spacingNonLinear: 0.55,
+    spacingLinear: 0.3,
+    spacingStaff: 6,
+    spacingSystem: 4,
   });
 }
 
