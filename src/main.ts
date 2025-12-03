@@ -390,8 +390,9 @@ function updateTheoryHint() {
   }
 
   // Analyze the right hand melody (primary learning focus)
+  // Pass level so hints are appropriate for the student
   const analysis = analyzePhrase(currentRightHandNotes, currentKeyName);
-  const summary = getAnalysisSummary(analysis);
+  const summary = getAnalysisSummary(analysis, getLevel());
 
   if (summary) {
     hintEl.textContent = summary;

@@ -365,21 +365,21 @@ describe('musicGenerator', () => {
       setLevel(1);
       setSubLevel(0);
       const result = generateMusicXML();
-      expect(result.lessonDescription).toBe('C and G only - whole notes');
+      expect(result.lessonDescription).toBe('C and G only — whole notes');
     });
 
     it('should have correct description for level 1b', () => {
       setLevel(1);
       setSubLevel(1);
       const result = generateMusicXML();
-      expect(result.lessonDescription).toBe('C, E, and G - whole notes');
+      expect(result.lessonDescription).toBe('C, E, and G — whole notes');
     });
 
     it('should have correct description for level 2a', () => {
       setLevel(2);
       setSubLevel(0);
       const result = generateMusicXML();
-      expect(result.lessonDescription).toBe('Half notes - C and G');
+      expect(result.lessonDescription).toBe('Half notes — C and G');
     });
   });
 

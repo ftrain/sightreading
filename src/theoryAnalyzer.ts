@@ -251,18 +251,39 @@ export function getRomanNumeralHint(
 }
 
 // Export analysis summary for display
-export function getAnalysisSummary(analysis: PhraseAnalysis): string {
+// Level parameter controls which hints are appropriate for the student
+export function getAnalysisSummary(analysis: PhraseAnalysis, level: number = 7): string {
   if (analysis.hints.length === 0) {
     return '';
   }
 
-  // Return the most relevant hint
-  const priorityOrder = ['chord', 'scale', 'pattern', 'technique', 'interval'];
+  // Filter hints based on level - beginners shouldn't see complex theory
+  let allowedTypes: string[];
+  if (level <= 2) {
+    // Levels 1-2: Only basic pattern hints (up/down motion)
+    allowedTypes = ['pattern'];
+  } else if (level <= 4) {
+    // Levels 3-4: Add scale hints
+    allowedTypes = ['pattern', 'scale'];
+  } else if (level <= 6) {
+    // Levels 5-6: Add interval hints
+    allowedTypes = ['pattern', 'scale', 'interval', 'technique'];
+  } else {
+    // Level 7+: Full theory hints including chords
+    allowedTypes = ['chord', 'scale', 'pattern', 'technique', 'interval'];
+  }
+
+  // Return the most relevant hint that's appropriate for this level
+  // Prioritize simpler concepts first for earlier levels
+  const priorityOrder = level <= 4
+    ? ['pattern', 'scale', 'technique', 'interval', 'chord']
+    : ['chord', 'scale', 'pattern', 'technique', 'interval'];
 
   for (const type of priorityOrder) {
+    if (!allowedTypes.includes(type)) continue;
     const hint = analysis.hints.find(h => h.type === type);
     if (hint) {
-      return `💡 ${hint.title}: ${hint.description}`;
+      return `${hint.title}: ${hint.description}`;
     }
   }
 

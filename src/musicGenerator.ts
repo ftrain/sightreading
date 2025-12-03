@@ -334,6 +334,23 @@ const classicalPatterns = [
   [5, 4, 3, 2, 1],
 ];
 
+// Larger interval patterns (6ths, 7ths, octaves)
+const wideIntervalPatterns = [
+  // 6ths
+  [1, 6], [6, 1], [1, 6, 1],
+  [3, 8], [8, 3], // 6th from 3 to high 1
+  // 7ths
+  [1, 7], [7, 1], [2, 8],
+  [1, 7, 5, 3, 1], // 7th down to tonic
+  // Octaves
+  [1, 8], [8, 1], [1, 8, 1],
+  [5, 5, 8, 8], // Repeated then octave jump
+  // Combined larger leaps
+  [1, 5, 8], // Arpeggio to octave
+  [8, 5, 3, 1], // Descending from octave
+  [1, 3, 5, 8, 5, 3, 1], // Full octave arpeggio
+];
+
 // ============================================
 // SCALES AND KEYS (Circle of Fifths)
 // ============================================
@@ -378,34 +395,34 @@ function getLessonDescription(level: number, subLevel: number): string {
 
   // C major foundation levels (1-7)
   const cMajorDescriptions: Record<string, string> = {
-    '1a': 'C and G only - whole notes',
-    '1b': 'C, E, and G - whole notes',
-    '1c': 'C through G - whole notes',
-    '1d': 'Stepwise melodies - whole notes',
-    '2a': 'Half notes - C and G',
-    '2b': 'Half notes - C, E, G triad',
+    '1a': 'C and G only — whole notes',
+    '1b': 'C, E, and G — whole notes',
+    '1c': 'C through G — whole notes',
+    '1d': 'Stepwise melodies — whole notes',
+    '2a': 'Half notes — C and G',
+    '2b': 'Half notes — C, E, G triad',
     '2c': 'Mixing whole and half notes',
     '2d': 'Longer phrases',
-    '3a': 'Quarter notes - stepwise',
-    '3b': 'Quarter notes - with skips',
+    '3a': 'Quarter notes — stepwise',
+    '3b': 'Quarter notes — with skips',
     '3c': 'Quarter and half notes mixed',
     '3d': 'Full rhythmic variety',
     '4a': 'Quarter rests',
     '4b': 'Half rests',
-    '4c': 'Mixed rests',
-    '4d': 'Musical phrasing with rests',
-    '5a': 'Introducing F#',
-    '5b': 'Introducing Bb',
-    '5c': 'F# and Bb together',
-    '5d': 'Chromatic neighbor tones',
-    '6a': 'Bass clef reading',
-    '6b': 'Bass patterns',
-    '6c': 'Simple coordination',
-    '6d': 'Hands together',
+    '4c': '3/4 time signature',
+    '4d': 'Mixed meters and rests',
+    '5a': 'Dotted half notes',
+    '5b': 'Dotted half note patterns',
+    '5c': 'Dotted quarter notes',
+    '5d': 'Dotted rhythms mixed',
+    '6a': '6ths — wider intervals',
+    '6b': '6ths and ledger lines',
+    '6c': 'High C ledger line',
+    '6d': 'Wide interval patterns',
     '7a': 'Paired eighth notes',
-    '7b': 'Eighth note patterns',
-    '7c': 'Mixing eighths and quarters',
-    '7d': 'Syncopation basics',
+    '7b': 'Octave jumps',
+    '7c': '7ths and octaves',
+    '7d': 'Full range with eighths',
   };
 
   if (level <= 7) {
@@ -571,11 +588,15 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
         config.patterns = folkPatterns.slice(0, 4);
         break;
       case 2:
+        // Introduce 3/4 time signature
+        config.timeSignature = { beats: 3, beatType: 4 };
         config.restProbability = 0.15;
-        config.durations = [4, 2, 1];
+        config.durations = [2, 1];
         config.patterns = [...folkPatterns.slice(0, 5), ...triadicPatterns];
         break;
       case 3:
+        // Mix of 3/4 and 4/4
+        config.timeSignature = Math.random() > 0.5 ? { beats: 3, beatType: 4 } : { beats: 4, beatType: 4 };
         config.restProbability = 0.12;
         config.durations = [4, 2, 1];
         config.patterns = folkPatterns;
@@ -588,15 +609,17 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
 
     switch (subLevel) {
       case 0:
-        config.accidentalProbability = 0.05;
+        // Introduce dotted half notes
+        config.durations = [3, 2, 1]; // 3 = dotted half
         config.patterns = stepwisePatterns;
         break;
       case 1:
-        config.accidentalProbability = 0.08;
+        config.durations = [3, 2, 1];
         config.patterns = [...stepwisePatterns, ...triadicPatterns];
         break;
       case 2:
-        config.accidentalProbability = 0.1;
+        // Dotted quarters
+        config.durations = [3, 1.5, 1]; // 1.5 = dotted quarter
         config.restProbability = 0.1;
         config.patterns = folkPatterns;
         break;
@@ -608,27 +631,33 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
         break;
     }
   } else if (level === 6) {
-    config.noteRange = [1, 2, 3, 4, 5, 6, 7];
+    // Level 6: Introduce 6ths and start ledger lines above staff
+    config.noteRange = [1, 2, 3, 4, 5, 6, 7, 8]; // Includes high C (ledger line)
     config.durations = [2, 1];
+    config.maxInterval = 6; // Allow 6ths
     config.includeLeftHand = true;
     config.suggestedBpm = 50;
 
     switch (subLevel) {
       case 0:
-        config.patterns = [[1, 5], [5, 1], [1, 3, 5]];
+        // Introduce 6ths
+        config.patterns = [[1, 6], [6, 1], [1, 3, 5], [3, 8]];
         break;
       case 1:
-        config.patterns = [...classicalPatterns.slice(0, 2), ...triadicPatterns];
+        config.patterns = [...triadicPatterns, ...wideIntervalPatterns.slice(0, 5)];
         break;
       case 2:
-        config.patterns = [...folkPatterns.slice(0, 3), ...classicalPatterns.slice(0, 3)];
+        // Add high C ledger line
+        config.patterns = [...folkPatterns.slice(0, 3), [1, 5, 8], [8, 5, 1]];
         break;
       case 3:
-        config.patterns = [...folkPatterns, ...classicalPatterns];
+        config.patterns = [...folkPatterns, ...wideIntervalPatterns.slice(0, 8)];
         break;
     }
   } else if (level === 7) {
-    config.noteRange = [1, 2, 3, 4, 5, 6, 7];
+    // Level 7: Eighths, 7ths, octaves, more ledger lines
+    config.noteRange = [0, 1, 2, 3, 4, 5, 6, 7, 8]; // Low B (ledger below) to high C
+    config.maxInterval = 8; // Allow octaves
     config.includeLeftHand = true;
     config.suggestedBpm = 60;
 
@@ -638,18 +667,19 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
         config.patterns = stepwisePatterns;
         break;
       case 1:
+        // Introduce octave jumps
         config.durations = [0.5, 1];
-        config.patterns = [...stepwisePatterns, ...folkPatterns.slice(0, 3)];
+        config.patterns = [...stepwisePatterns, [1, 8], [8, 1]];
         break;
       case 2:
         config.durations = [0.5, 1, 2];
         config.restProbability = 0.08;
-        config.patterns = folkPatterns;
+        config.patterns = [...folkPatterns, ...wideIntervalPatterns.slice(5, 12)];
         break;
       case 3:
         config.durations = [0.5, 1, 2, 4];
         config.restProbability = 0.1;
-        config.patterns = [...folkPatterns, ...classicalPatterns];
+        config.patterns = [...folkPatterns, ...classicalPatterns, ...wideIntervalPatterns];
         break;
     }
   }
@@ -798,8 +828,29 @@ function generateBass(
   const measures: NoteData[][] = [];
   const baseOctave = 3;
 
-  // Bass patterns - simpler than melody
-  const bassPatterns = [[1], [1, 5], [1, 3, 5], [1, 5, 1, 5], [1, 3, 5, 3]];
+  // Bass patterns - progressively more melodic at higher levels
+  let bassPatterns: number[][];
+  if (progress.level <= 5) {
+    // Simple harmonic patterns
+    bassPatterns = [[1], [1, 5], [1, 3, 5], [1, 5, 1, 5], [1, 3, 5, 3]];
+  } else if (progress.level <= 6) {
+    // More melodic bass lines
+    bassPatterns = [
+      [1, 2, 3, 2], // Stepwise
+      [1, 3, 5, 3],
+      [5, 4, 3, 2, 1], // Descending scale
+      [1, 2, 3, 4, 5], // Ascending scale
+      ...classicalPatterns.slice(0, 3),
+    ];
+  } else {
+    // Fully melodic bass with wider range
+    bassPatterns = [
+      ...stepwisePatterns.slice(0, 5),
+      ...classicalPatterns,
+      [1, 5, 8, 5], // Octave reach
+      [8, 7, 6, 5], // High descending
+    ];
+  }
   const pattern = pick(bassPatterns);
   let patternIdx = 0;
 
@@ -1051,6 +1102,12 @@ ${fingeringXml}      </note>
 }
 
 function getNoteType(duration: number): string {
+  // Handle dotted notes: dotted half = 3, dotted quarter = 1.5, dotted eighth = 0.75
+  if (duration === 3) return '<type>half</type>\n        <dot/>';
+  if (duration === 1.5) return '<type>quarter</type>\n        <dot/>';
+  if (duration === 0.75) return '<type>eighth</type>\n        <dot/>';
+
+  // Standard durations
   if (duration >= 4) return '<type>whole</type>';
   if (duration >= 2) return '<type>half</type>';
   if (duration >= 1) return '<type>quarter</type>';
