@@ -141,18 +141,21 @@ export function getSuggestedBpm(level: number): number {
   if (level <= 2) return 30; // Whole/half notes - very slow
   if (level <= 4) return 40; // Quarter notes introduction
   if (level <= 6) return 50; // Building complexity
-  if (level <= 7) return 60; // Eighth notes need slightly faster
+  if (level <= 7) return 60; // Dotted notes
+  if (level <= 8) return 55; // Eighth notes - slightly slower for precision
+  if (level <= 9) return 50; // Dotted eighths - need time to feel the rhythm
+  if (level <= 10) return 45; // Sixteenths - slow for accuracy
   // New keys reset to slower tempos
-  if (level >= 8) {
+  if (level >= 11) {
     // Each new key level starts slower, then can build
-    const keyLevel = level - 7; // 1, 2, 3...
+    const keyLevel = level - 10; // 1, 2, 3...
     return 40 + (keyLevel * 5); // 45, 50, 55... but still moderate
   }
   return 60;
 }
 
 export function setLevel(level: number): void {
-  progress.level = Math.max(1, Math.min(20, level)); // Expanded to 20 levels
+  progress.level = Math.max(1, Math.min(23, level)); // Expanded to 23 levels
   progress.subLevel = 0;
   progress.repetitions = 0;
   progress.currentBpm = getSuggestedBpm(progress.level);
@@ -433,11 +436,11 @@ const keys: Record<string, KeyInfo> = {
 const keyProgression = ['C', 'G', 'F', 'D', 'Bb', 'A', 'Eb', 'E', 'Ab', 'B', 'Db'];
 
 function getKeyForLevel(level: number): KeyInfo {
-  if (level <= 7) {
+  if (level <= 10) {
     return keys['C'];
   }
-  // Level 8 = G, Level 9 = F, Level 10 = D, etc.
-  const keyIndex = Math.min(level - 7, keyProgression.length - 1);
+  // Level 11 = G, Level 12 = F, Level 13 = D, etc.
+  const keyIndex = Math.min(level - 10, keyProgression.length - 1);
   return keys[keyProgression[keyIndex]];
 }
 
@@ -485,13 +488,28 @@ function getLessonDescription(level: number, subLevel: number): string {
     '7b': 'Dotted half notes (LH)',
     '7c': 'Wider intervals — 6ths (RH)',
     '7d': 'Full range — both hands',
+    // Level 8: Eighth notes
+    '8a': 'Eighth notes — stepwise (RH)',
+    '8b': 'Eighth notes — stepwise (LH)',
+    '8c': 'Eighth and quarter notes (RH)',
+    '8d': 'Eighth notes — both hands',
+    // Level 9: Dotted eighths
+    '9a': 'Dotted eighth rhythms (RH)',
+    '9b': 'Dotted eighth rhythms (LH)',
+    '9c': 'Syncopated patterns (RH)',
+    '9d': 'Dotted eighths — both hands',
+    // Level 10: Sixteenth notes
+    '10a': 'Sixteenth notes — stepwise (RH)',
+    '10b': 'Sixteenth notes — stepwise (LH)',
+    '10c': 'Mixed rhythms (RH)',
+    '10d': 'Sixteenth notes — both hands',
   };
 
-  if (level <= 7) {
+  if (level <= 10) {
     return cMajorDescriptions[`${level}${sub}`] || `Level ${level}${sub}`;
   }
 
-  // New key levels (8+) with interleaved hands
+  // New key levels (11+) with interleaved hands
   const keyInfo = getKeyForLevel(level);
   const keyDescriptions = [
     'whole notes (RH)',
@@ -761,14 +779,107 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
         config.patterns = [...folkPatterns, ...wideIntervalPatterns.slice(0, 5)];
         break;
     }
+  } else if (level === 8) {
+    // LEVEL 8: Eighth notes
+    config.noteRange = [1, 2, 3, 4, 5, 6, 7, 8];
+    config.suggestedBpm = 55;
+
+    switch (subLevel) {
+      case 0: // 8a: Eighth notes - RH stepwise
+        config.handMode = 'right';
+        config.durations = [0.5];
+        config.maxInterval = 2;
+        config.patterns = stepwisePatterns;
+        break;
+      case 1: // 8b: Eighth notes - LH stepwise
+        config.handMode = 'left';
+        config.durations = [0.5];
+        config.maxInterval = 2;
+        config.patterns = stepwisePatterns;
+        break;
+      case 2: // 8c: Eighth and quarter notes - RH
+        config.handMode = 'right';
+        config.durations = [0.5, 1];
+        config.maxInterval = 3;
+        config.patterns = [...stepwisePatterns, ...folkPatterns.slice(0, 3)];
+        break;
+      case 3: // 8d: Eighth notes - both hands
+        config.handMode = 'both';
+        config.durations = [0.5, 1];
+        config.maxInterval = 3;
+        config.patterns = [...stepwisePatterns, ...folkPatterns.slice(0, 5)];
+        break;
+    }
+  } else if (level === 9) {
+    // LEVEL 9: Dotted eighth rhythms
+    config.noteRange = [1, 2, 3, 4, 5, 6, 7, 8];
+    config.suggestedBpm = 50;
+
+    switch (subLevel) {
+      case 0: // 9a: Dotted eighths - RH
+        config.handMode = 'right';
+        config.durations = [0.75, 0.5, 1]; // dotted eighth, eighth, quarter
+        config.maxInterval = 2;
+        config.patterns = stepwisePatterns;
+        break;
+      case 1: // 9b: Dotted eighths - LH
+        config.handMode = 'left';
+        config.durations = [0.75, 0.5, 1];
+        config.maxInterval = 2;
+        config.patterns = stepwisePatterns;
+        break;
+      case 2: // 9c: Syncopated patterns - RH
+        config.handMode = 'right';
+        config.durations = [0.75, 0.5, 1, 2];
+        config.maxInterval = 4;
+        config.patterns = [...folkPatterns, ...triadicPatterns];
+        break;
+      case 3: // 9d: Dotted eighths - both hands
+        config.handMode = 'both';
+        config.durations = [0.75, 0.5, 1];
+        config.maxInterval = 4;
+        config.patterns = [...folkPatterns, ...classicalPatterns.slice(0, 5)];
+        break;
+    }
+  } else if (level === 10) {
+    // LEVEL 10: Sixteenth notes
+    config.noteRange = [1, 2, 3, 4, 5, 6, 7, 8];
+    config.suggestedBpm = 45;
+
+    switch (subLevel) {
+      case 0: // 10a: Sixteenth notes - RH stepwise
+        config.handMode = 'right';
+        config.durations = [0.25];
+        config.maxInterval = 1; // Very stepwise for fast notes
+        config.patterns = stepwisePatterns.slice(0, 5);
+        break;
+      case 1: // 10b: Sixteenth notes - LH stepwise
+        config.handMode = 'left';
+        config.durations = [0.25];
+        config.maxInterval = 1;
+        config.patterns = stepwisePatterns.slice(0, 5);
+        break;
+      case 2: // 10c: Mixed rhythms - RH
+        config.handMode = 'right';
+        config.durations = [0.25, 0.5, 1];
+        config.maxInterval = 2;
+        config.patterns = [...stepwisePatterns, ...folkPatterns.slice(0, 3)];
+        break;
+      case 3: // 10d: Sixteenth notes - both hands
+        config.handMode = 'both';
+        config.durations = [0.25, 0.5, 1];
+        config.maxInterval = 2;
+        config.patterns = [...stepwisePatterns, ...folkPatterns.slice(0, 5)];
+        break;
+    }
   }
 
   // ========================================
-  // NEW KEY LEVELS (Level 8+)
+  // NEW KEY LEVELS (Level 11+)
   // Each key: RH whole → LH whole → RH varied → Both hands
   // ========================================
 
-  else if (level >= 8) {
+  else if (level >= 11) {
     config.key = keyInfo;
     config.noteRange = [1, 2, 3, 4, 5, 6, 7, 8]; // Full octave in new key
 
@@ -805,10 +916,10 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
     }
 
     // Higher key levels can be slightly more challenging
-    if (level >= 12) {
+    if (level >= 15) {
       config.maxInterval = 4;
     }
-    if (level >= 14) {
+    if (level >= 17) {
       config.maxInterval = 5;
     }
   }

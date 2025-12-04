@@ -46,12 +46,12 @@ describe('musicGenerator', () => {
       expect(getFullLevelString()).toBe('1d');
     });
 
-    it('should clamp level to valid range (1-20)', () => {
+    it('should clamp level to valid range (1-23)', () => {
       setLevel(0);
       expect(getLevel()).toBe(1);
 
-      setLevel(25);
-      expect(getLevel()).toBe(20);
+      setLevel(30);
+      expect(getLevel()).toBe(23);
     });
 
     it('should require 3 successful plays to advance sub-level', () => {
@@ -317,30 +317,30 @@ describe('musicGenerator', () => {
     });
   });
 
-  describe('Key Progression (Level 8+)', () => {
-    it('should use G major at level 8', () => {
-      setLevel(8);
+  describe('Key Progression (Level 11+)', () => {
+    it('should use G major at level 11', () => {
+      setLevel(11);
       const result = generateMusicXML();
       expect(result.keyName).toBe('G major');
       expect(result.xml).toContain('<fifths>1</fifths>');
     });
 
-    it('should use F major at level 9', () => {
-      setLevel(9);
+    it('should use F major at level 12', () => {
+      setLevel(12);
       const result = generateMusicXML();
       expect(result.keyName).toBe('F major');
       expect(result.xml).toContain('<fifths>-1</fifths>');
     });
 
-    it('should use D major at level 10', () => {
-      setLevel(10);
+    it('should use D major at level 13', () => {
+      setLevel(13);
       const result = generateMusicXML();
       expect(result.keyName).toBe('D major');
       expect(result.xml).toContain('<fifths>2</fifths>');
     });
 
     it('should reset to whole notes at sub-level 0 for new keys', () => {
-      setLevel(8);
+      setLevel(11);
       setSubLevel(0);
       let foundWholeNote = false;
       for (let i = 0; i < 10; i++) {
@@ -353,8 +353,8 @@ describe('musicGenerator', () => {
       expect(foundWholeNote).toBe(true);
     });
 
-    it('should include key name in lesson description for level 8+', () => {
-      setLevel(8);
+    it('should include key name in lesson description for level 11+', () => {
+      setLevel(11);
       const result = generateMusicXML();
       expect(result.lessonDescription).toContain('G major');
     });
