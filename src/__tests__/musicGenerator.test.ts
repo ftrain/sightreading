@@ -274,8 +274,9 @@ describe('musicGenerator', () => {
       expect(result.xml).toContain('<beat-type>4</beat-type>');
     });
 
-    it('should generate half notes at level 2', () => {
-      setLevel(2);
+    it('should generate half notes at level 4', () => {
+      // Level 4 introduces half notes (levels 1-3 are whole notes with RH, LH, both)
+      setLevel(4);
       let foundHalfNote = false;
       for (let i = 0; i < 10; i++) {
         const result = generateMusicXML();
@@ -287,8 +288,9 @@ describe('musicGenerator', () => {
       expect(foundHalfNote).toBe(true);
     });
 
-    it('should generate quarter notes at level 3', () => {
-      setLevel(3);
+    it('should generate quarter notes at level 5', () => {
+      // Level 5 introduces quarter notes
+      setLevel(5);
       let foundQuarterNote = false;
       for (let i = 0; i < 10; i++) {
         const result = generateMusicXML();
@@ -300,17 +302,18 @@ describe('musicGenerator', () => {
       expect(foundQuarterNote).toBe(true);
     });
 
-    it('should potentially include eighth notes at level 7+', () => {
+    it('should generate dotted notes at level 7+', () => {
+      // Level 7 introduces dotted notes
       setLevel(7);
-      let foundEighthNote = false;
+      let foundDottedNote = false;
       for (let i = 0; i < 20; i++) {
         const result = generateMusicXML();
-        if (result.xml.includes('<type>eighth</type>')) {
-          foundEighthNote = true;
+        if (result.xml.includes('<dot/>')) {
+          foundDottedNote = true;
           break;
         }
       }
-      expect(foundEighthNote).toBe(true);
+      expect(foundDottedNote).toBe(true);
     });
   });
 
@@ -358,25 +361,32 @@ describe('musicGenerator', () => {
   });
 
   describe('Lesson Descriptions', () => {
-    it('should have correct description for level 1a', () => {
+    it('should have correct description for level 1a (RH)', () => {
       setLevel(1);
       setSubLevel(0);
       const result = generateMusicXML();
-      expect(result.lessonDescription).toBe('C and G only — whole notes');
+      expect(result.lessonDescription).toBe('C and G — whole notes (RH)');
     });
 
-    it('should have correct description for level 1b', () => {
+    it('should have correct description for level 1b (RH)', () => {
       setLevel(1);
       setSubLevel(1);
       const result = generateMusicXML();
-      expect(result.lessonDescription).toBe('C, E, and G — whole notes');
+      expect(result.lessonDescription).toBe('C, E, G triad — whole notes (RH)');
     });
 
-    it('should have correct description for level 2a', () => {
+    it('should have correct description for level 2a (LH)', () => {
       setLevel(2);
       setSubLevel(0);
       const result = generateMusicXML();
-      expect(result.lessonDescription).toBe('Half notes — C and G');
+      expect(result.lessonDescription).toBe('C and G — whole notes (LH)');
+    });
+
+    it('should have correct description for level 3a (both hands)', () => {
+      setLevel(3);
+      setSubLevel(0);
+      const result = generateMusicXML();
+      expect(result.lessonDescription).toBe('Simple coordination — whole notes');
     });
   });
 

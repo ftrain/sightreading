@@ -57,13 +57,43 @@ interface LevelProgress {
   bpmMastery: number; // How many successful plays at current BPM
 }
 
-let progress: LevelProgress = {
-  level: 1,
-  subLevel: 0,
-  repetitions: 0,
-  currentBpm: 30,
-  bpmMastery: 0,
-};
+const STORAGE_KEY = 'sightreading-progress';
+
+function loadProgress(): LevelProgress {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Validate and return saved progress
+      return {
+        level: Math.max(1, Math.min(20, parsed.level || 1)),
+        subLevel: Math.max(0, Math.min(3, parsed.subLevel || 0)),
+        repetitions: parsed.repetitions || 0,
+        currentBpm: Math.max(20, Math.min(200, parsed.currentBpm || 30)),
+        bpmMastery: parsed.bpmMastery || 0,
+      };
+    }
+  } catch {
+    // Ignore parse errors, use defaults
+  }
+  return {
+    level: 1,
+    subLevel: 0,
+    repetitions: 0,
+    currentBpm: 30,
+    bpmMastery: 0,
+  };
+}
+
+function saveProgress(): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+  } catch {
+    // Ignore storage errors (e.g., private browsing)
+  }
+}
+
+let progress: LevelProgress = loadProgress();
 
 // Mastery requirements
 const NOTE_MASTERY_THRESHOLD = 3; // Successful plays to advance sub-level
@@ -127,16 +157,19 @@ export function setLevel(level: number): void {
   progress.repetitions = 0;
   progress.currentBpm = getSuggestedBpm(progress.level);
   progress.bpmMastery = 0;
+  saveProgress();
 }
 
 export function setSubLevel(subLevel: number): void {
   progress.subLevel = Math.max(0, Math.min(3, subLevel));
   progress.repetitions = 0;
+  saveProgress();
 }
 
 export function setBpm(bpm: number): void {
   progress.currentBpm = Math.max(20, Math.min(200, bpm));
   progress.bpmMastery = 0;
+  saveProgress();
 }
 
 // Called when user successfully completes a piece
@@ -158,6 +191,7 @@ export function incrementLevel(): void {
       progress.bpmMastery = 0;
     }
   }
+  saveProgress();
 }
 
 // Check if user should increase tempo
@@ -169,6 +203,7 @@ export function increaseTempo(): void {
   if (shouldIncreaseTempo()) {
     progress.currentBpm = Math.min(200, progress.currentBpm + BPM_INCREMENT);
     progress.bpmMastery = 0;
+    saveProgress();
   }
 }
 
@@ -180,6 +215,7 @@ export function resetProgress(): void {
     currentBpm: 30,
     bpmMastery: 0,
   };
+  saveProgress();
 }
 
 export function getRepetitionsRemaining(): number {
@@ -193,82 +229,67 @@ export function getBpmMasteryRemaining(): number {
 // ============================================
 // EXPANDED LEVEL STRUCTURE
 // ============================================
-// Levels 1-7: C major foundation
+// Levels 1-7: C major foundation with INTERLEAVED hand practice
 // Level 8+: One new key per level, resetting to basics each time
 //
-// LEVEL 1: Middle C position (C-G), whole notes only
-//   1a: Just C and G (two notes)
-//   1b: Add E (three notes - C major triad)
-//   1c: Add D and F (five-finger position)
-//   1d: All notes C-G with focus on stepwise motion
+// PHILOSOPHY: Left hand and both-hands are introduced early and
+// practiced throughout, not saved until the end. Each rhythmic
+// concept is practiced in all three modes: RH, LH, then both.
 //
-// LEVEL 2: Half notes introduction
-//   2a: Half notes only, C and G
-//   2b: Half notes, C-E-G (triad outline)
-//   2c: Mix of whole and half notes
-//   2d: Longer phrases with whole/half
+// LEVEL 1: Middle C position, whole notes - RH ONLY
+//   1a: Just C and G (two notes) - RH
+//   1b: Add E (three notes - C major triad) - RH
+//   1c: Add D and F (five-finger position) - RH
+//   1d: All notes C-G with stepwise motion - RH
 //
-// LEVEL 3: Quarter notes introduction
-//   3a: Quarter notes in simple patterns (stepwise)
-//   3b: Quarter notes with small skips
-//   3c: Mix of quarter and half notes
-//   3d: Full rhythmic variety (whole, half, quarter)
+// LEVEL 2: Whole notes - LH ONLY (bass clef intro)
+//   2a: Just C and G - LH
+//   2b: C, E, G triad - LH
+//   2c: C through G - LH
+//   2d: Stepwise melodies - LH
 //
-// LEVEL 4: Rests introduction
-//   4a: Quarter rests only
-//   4b: Half rests
-//   4c: Mix of rest types
-//   4d: Musical phrases with rests
+// LEVEL 3: Whole notes - BOTH HANDS
+//   3a: Simple coordination, sustained notes
+//   3b: Alternating hands
+//   3c: Both hands together
+//   3d: Independent whole note patterns
 //
-// LEVEL 5: Accidentals (chromatic notes, still in C)
-//   5a: F# only (leading tone to G)
-//   5b: Bb only (common chromatic note)
-//   5c: Both F# and Bb
-//   5d: All common chromatic alterations
+// LEVEL 4: Half notes - RH then LH
+//   4a: Half notes - RH
+//   4b: Half notes - LH
+//   4c: Mix whole/half - RH
+//   4d: Mix whole/half - both hands
 //
-// LEVEL 6: Left hand focus (still C major)
-//   6a: Bass clef reading, C-G
-//   6b: Longer bass patterns
-//   6c: Both hands with simple coordination
-//   6d: Hands together practice
+// LEVEL 5: Quarter notes - RH, LH, both
+//   5a: Quarter notes stepwise - RH
+//   5b: Quarter notes stepwise - LH
+//   5c: Quarter + half - RH
+//   5d: Quarter notes - both hands
 //
-// LEVEL 7: Eighth notes (still C major)
-//   7a: Paired eighths on beats
-//   7b: Eighth note patterns
-//   7c: Mix with quarters
-//   7d: Syncopation introduction
+// LEVEL 6: Rests and 3/4 time
+//   6a: Quarter rests - RH
+//   6b: Quarter rests - LH
+//   6c: 3/4 time intro - RH
+//   6d: 3/4 time - both hands
+//
+// LEVEL 7: Dotted notes and wider range
+//   7a: Dotted half notes - RH
+//   7b: Dotted half notes - LH
+//   7c: Wider intervals (6ths) - RH
+//   7d: Full range - both hands
 //
 // === NEW KEY LEVELS (each resets to basics) ===
 //
 // LEVEL 8: G MAJOR (1 sharp - F#)
-//   8a: G major scale, WHOLE NOTES only, stepwise
-//   8b: G major, half notes
-//   8c: G major, quarter notes
-//   8d: G major, full rhythmic variety
+//   8a: G major whole notes - RH
+//   8b: G major whole notes - LH
+//   8c: G major half notes - RH
+//   8d: G major - both hands
 //
 // LEVEL 9: F MAJOR (1 flat - Bb)
-//   9a: F major scale, whole notes only
-//   9b: F major, half notes
-//   9c: F major, quarter notes
-//   9d: F major, full rhythmic variety
+//   9a-d: Same pattern as level 8
 //
-// LEVEL 10: D MAJOR (2 sharps - F#, C#)
-//   10a: D major scale, whole notes only
-//   10b: D major, half notes
-//   10c: D major, quarter notes
-//   10d: D major, full rhythmic variety
-//
-// LEVEL 11: Bb MAJOR (2 flats - Bb, Eb)
-//   11a: Bb major scale, whole notes only
-//   11b: Bb major, half notes
-//   11c: Bb major, quarter notes
-//   11d: Bb major, full rhythmic variety
-//
-// LEVEL 12: A MAJOR (3 sharps)
-// LEVEL 13: Eb MAJOR (3 flats)
-// LEVEL 14: E MAJOR (4 sharps)
-// LEVEL 15: Ab MAJOR (4 flats)
-// ... and so on
+// LEVEL 10+: Continue with more keys...
 
 export interface NoteData {
   step: string;
@@ -427,52 +448,59 @@ function getLessonDescription(level: number, subLevel: number): string {
   const subLabels = ['a', 'b', 'c', 'd'];
   const sub = subLabels[subLevel];
 
-  // C major foundation levels (1-7)
+  // C major foundation levels (1-7) with interleaved hands
   const cMajorDescriptions: Record<string, string> = {
-    '1a': 'C and G only — whole notes',
-    '1b': 'C, E, and G — whole notes',
-    '1c': 'C through G — whole notes',
-    '1d': 'Stepwise melodies — whole notes',
-    '2a': 'Half notes — C and G',
-    '2b': 'Half notes — C, E, G triad',
-    '2c': 'Mixing whole and half notes',
-    '2d': 'Longer phrases',
-    '3a': 'Quarter notes — stepwise',
-    '3b': 'Quarter notes — with skips',
-    '3c': 'Quarter and half notes mixed',
-    '3d': 'Full rhythmic variety',
-    '4a': 'Quarter rests',
-    '4b': 'Half rests',
-    '4c': '3/4 time signature',
-    '4d': 'Mixed meters and rests',
-    '5a': 'Dotted half notes',
-    '5b': 'Dotted half note patterns',
-    '5c': 'Dotted quarter notes',
-    '5d': 'Dotted rhythms mixed',
-    '6a': '6ths — wider intervals',
-    '6b': '6ths and ledger lines',
-    '6c': 'High C ledger line',
-    '6d': 'Wide interval patterns',
-    '7a': 'Paired eighth notes',
-    '7b': 'Octave jumps',
-    '7c': '7ths and octaves',
-    '7d': 'Full range with eighths',
+    // Level 1: Right hand whole notes
+    '1a': 'C and G — whole notes (RH)',
+    '1b': 'C, E, G triad — whole notes (RH)',
+    '1c': 'C through G — whole notes (RH)',
+    '1d': 'Stepwise — whole notes (RH)',
+    // Level 2: Left hand whole notes (bass clef intro)
+    '2a': 'C and G — whole notes (LH)',
+    '2b': 'C, E, G triad — whole notes (LH)',
+    '2c': 'C through G — whole notes (LH)',
+    '2d': 'Stepwise — whole notes (LH)',
+    // Level 3: Both hands whole notes
+    '3a': 'Simple coordination — whole notes',
+    '3b': 'Triad patterns — whole notes',
+    '3c': 'Stepwise — whole notes',
+    '3d': 'Full patterns — whole notes',
+    // Level 4: Half notes
+    '4a': 'Half notes (RH)',
+    '4b': 'Half notes (LH)',
+    '4c': 'Whole and half notes (RH)',
+    '4d': 'Whole and half notes — both hands',
+    // Level 5: Quarter notes
+    '5a': 'Quarter notes — stepwise (RH)',
+    '5b': 'Quarter notes — stepwise (LH)',
+    '5c': 'Quarter and half notes (RH)',
+    '5d': 'Quarter notes — both hands',
+    // Level 6: Rests and 3/4 time
+    '6a': 'Quarter rests (RH)',
+    '6b': 'Quarter rests (LH)',
+    '6c': '3/4 time signature (RH)',
+    '6d': '3/4 time — both hands',
+    // Level 7: Dotted notes and wider range
+    '7a': 'Dotted half notes (RH)',
+    '7b': 'Dotted half notes (LH)',
+    '7c': 'Wider intervals — 6ths (RH)',
+    '7d': 'Full range — both hands',
   };
 
   if (level <= 7) {
     return cMajorDescriptions[`${level}${sub}`] || `Level ${level}${sub}`;
   }
 
-  // New key levels (8+)
+  // New key levels (8+) with interleaved hands
   const keyInfo = getKeyForLevel(level);
-  const rhythmDescriptions = [
-    'whole notes - learn the key',
-    'half notes',
-    'quarter notes',
-    'full rhythmic variety',
+  const keyDescriptions = [
+    'whole notes (RH)',
+    'whole notes (LH)',
+    'quarter notes (RH)',
+    'both hands',
   ];
 
-  return `${keyInfo.name} - ${rhythmDescriptions[subLevel]}`;
+  return `${keyInfo.name} — ${keyDescriptions[subLevel]}`;
 }
 
 function pick<T>(arr: T[]): T {
@@ -510,7 +538,7 @@ interface LevelConfig {
   timeSignature: { beats: number; beatType: number };
   noteRange: number[]; // Scale degrees to use
   patterns: number[][]; // Which melodic patterns to use
-  includeLeftHand: boolean;
+  handMode: 'right' | 'left' | 'both'; // Which hand(s) to practice
   suggestedBpm: number;
   // Chord/harmony settings
   chordProbability: number; // 0-1, probability of a chord instead of single note
@@ -531,7 +559,7 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
     timeSignature: { beats: 4, beatType: 4 },
     noteRange: [1, 3, 5],
     patterns: stepwisePatterns.slice(0, 3),
-    includeLeftHand: level >= 6,
+    handMode: 'right', // Default to right hand
     suggestedBpm: getSuggestedBpm(level),
     chordProbability: 0,
     chordTypes: 'none',
@@ -539,246 +567,240 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
 
   // ========================================
   // C MAJOR FOUNDATION (Levels 1-7)
+  // Hands are interleaved: RH → LH → Both
   // ========================================
 
   if (level === 1) {
+    // LEVEL 1: Whole notes - RIGHT HAND ONLY
     config.durations = [4];
     config.restProbability = 0;
     config.maxInterval = 2;
     config.suggestedBpm = 30;
+    config.handMode = 'right';
 
     switch (subLevel) {
-      case 0: // 1a: Just C and G
+      case 0: // 1a: Just C and G - RH
         config.noteRange = [1, 5];
         config.patterns = [[1, 5], [5, 1], [1, 1, 5], [5, 5, 1]];
         break;
-      case 1: // 1b: Add E
+      case 1: // 1b: Add E - RH
         config.noteRange = [1, 3, 5];
         config.patterns = [[1, 3, 5], [5, 3, 1], [1, 3], [3, 5]];
         break;
-      case 2: // 1c: C through G
+      case 2: // 1c: C through G - RH
         config.noteRange = [1, 2, 3, 4, 5];
         config.patterns = [[1, 2, 3], [3, 2, 1], [1, 2, 3, 4, 5]];
         break;
-      case 3: // 1d: All with stepwise focus
+      case 3: // 1d: Stepwise - RH
         config.noteRange = [1, 2, 3, 4, 5];
         config.patterns = stepwisePatterns;
         break;
     }
   } else if (level === 2) {
+    // LEVEL 2: Whole notes - LEFT HAND ONLY (bass clef intro)
+    config.durations = [4];
+    config.restProbability = 0;
+    config.maxInterval = 2;
+    config.suggestedBpm = 30;
+    config.handMode = 'left';
+
+    switch (subLevel) {
+      case 0: // 2a: Just C and G - LH
+        config.noteRange = [1, 5];
+        config.patterns = [[1, 5], [5, 1], [1, 1, 5], [5, 5, 1]];
+        break;
+      case 1: // 2b: C, E, G - LH
+        config.noteRange = [1, 3, 5];
+        config.patterns = [[1, 3, 5], [5, 3, 1], [1, 3], [3, 5]];
+        break;
+      case 2: // 2c: C through G - LH
+        config.noteRange = [1, 2, 3, 4, 5];
+        config.patterns = [[1, 2, 3], [3, 2, 1], [1, 2, 3, 4, 5]];
+        break;
+      case 3: // 2d: Stepwise - LH
+        config.noteRange = [1, 2, 3, 4, 5];
+        config.patterns = stepwisePatterns;
+        break;
+    }
+  } else if (level === 3) {
+    // LEVEL 3: Whole notes - BOTH HANDS
+    config.durations = [4];
+    config.restProbability = 0;
+    config.maxInterval = 2;
+    config.suggestedBpm = 30;
+    config.handMode = 'both';
+    config.noteRange = [1, 2, 3, 4, 5];
+
+    switch (subLevel) {
+      case 0: // 3a: Simple coordination
+        config.patterns = [[1, 5], [5, 1]];
+        break;
+      case 1: // 3b: Triads
+        config.patterns = triadicPatterns.slice(0, 3);
+        break;
+      case 2: // 3c: Stepwise
+        config.patterns = stepwisePatterns.slice(0, 5);
+        break;
+      case 3: // 3d: Full patterns
+        config.patterns = [...stepwisePatterns, ...triadicPatterns];
+        break;
+    }
+  } else if (level === 4) {
+    // LEVEL 4: Half notes - RH, LH, then both
     config.noteRange = [1, 2, 3, 4, 5];
     config.suggestedBpm = 30;
 
     switch (subLevel) {
-      case 0:
+      case 0: // 4a: Half notes - RH
+        config.handMode = 'right';
         config.durations = [2];
-        config.noteRange = [1, 5];
-        config.patterns = [[1, 5], [5, 1]];
+        config.patterns = [[1, 5], [5, 1], [1, 3, 5]];
         break;
-      case 1:
+      case 1: // 4b: Half notes - LH
+        config.handMode = 'left';
         config.durations = [2];
-        config.patterns = triadicPatterns;
+        config.patterns = [[1, 5], [5, 1], [1, 3, 5]];
         break;
-      case 2:
+      case 2: // 4c: Mix whole/half - RH
+        config.handMode = 'right';
         config.durations = [4, 2];
         config.patterns = [...stepwisePatterns.slice(0, 5), ...triadicPatterns.slice(0, 3)];
         break;
-      case 3:
-        config.durations = [4, 2, 2];
+      case 3: // 4d: Mix whole/half - both hands
+        config.handMode = 'both';
+        config.durations = [4, 2];
         config.patterns = [...stepwisePatterns, ...triadicPatterns];
         break;
     }
-  } else if (level === 3) {
+  } else if (level === 5) {
+    // LEVEL 5: Quarter notes - RH, LH, then both
     config.noteRange = [1, 2, 3, 4, 5, 6];
     config.suggestedBpm = 40;
 
     switch (subLevel) {
-      case 0:
+      case 0: // 5a: Quarter notes - RH
+        config.handMode = 'right';
         config.durations = [1];
         config.maxInterval = 1;
         config.patterns = stepwisePatterns;
         break;
-      case 1:
+      case 1: // 5b: Quarter notes - LH
+        config.handMode = 'left';
         config.durations = [1];
-        config.maxInterval = 2;
-        config.patterns = [...stepwisePatterns, ...triadicPatterns.slice(0, 3)];
+        config.maxInterval = 1;
+        config.patterns = stepwisePatterns;
         break;
-      case 2:
+      case 2: // 5c: Quarter + half - RH
+        config.handMode = 'right';
         config.durations = [1, 2];
         config.patterns = [...folkPatterns.slice(0, 3)];
         break;
-      case 3:
-        config.durations = [4, 2, 1];
+      case 3: // 5d: Quarter notes - both hands
+        config.handMode = 'both';
+        config.durations = [1, 2];
         config.patterns = [...folkPatterns.slice(0, 5)];
         break;
     }
-  } else if (level === 4) {
+  } else if (level === 6) {
+    // LEVEL 6: Rests and 3/4 time
     config.noteRange = [1, 2, 3, 4, 5, 6];
     config.durations = [1, 2];
     config.suggestedBpm = 40;
 
     switch (subLevel) {
-      case 0:
+      case 0: // 6a: Quarter rests - RH
+        config.handMode = 'right';
         config.restProbability = 0.15;
         config.patterns = stepwisePatterns;
         break;
-      case 1:
-        config.restProbability = 0.2;
-        config.durations = [2, 1];
-        config.patterns = folkPatterns.slice(0, 4);
-        break;
-      case 2:
-        // Introduce 3/4 time signature
-        config.timeSignature = { beats: 3, beatType: 4 };
+      case 1: // 6b: Quarter rests - LH
+        config.handMode = 'left';
         config.restProbability = 0.15;
-        config.durations = [2, 1];
+        config.patterns = stepwisePatterns;
+        break;
+      case 2: // 6c: 3/4 time - RH
+        config.handMode = 'right';
+        config.timeSignature = { beats: 3, beatType: 4 };
+        config.restProbability = 0.1;
         config.patterns = [...folkPatterns.slice(0, 5), ...triadicPatterns];
         break;
-      case 3:
-        // Mix of 3/4 and 4/4
-        config.timeSignature = Math.random() > 0.5 ? { beats: 3, beatType: 4 } : { beats: 4, beatType: 4 };
-        config.restProbability = 0.12;
-        config.durations = [4, 2, 1];
-        config.patterns = folkPatterns;
-        break;
-    }
-  } else if (level === 5) {
-    config.noteRange = [1, 2, 3, 4, 5, 6, 7];
-    config.durations = [2, 1];
-    config.suggestedBpm = 50;
-
-    switch (subLevel) {
-      case 0:
-        // Introduce dotted half notes
-        config.durations = [3, 2, 1]; // 3 = dotted half
-        config.patterns = stepwisePatterns;
-        break;
-      case 1:
-        config.durations = [3, 2, 1];
-        config.patterns = [...stepwisePatterns, ...triadicPatterns];
-        break;
-      case 2:
-        // Dotted quarters + introduce intervals (3rds, 5ths)
-        config.durations = [3, 1.5, 1]; // 1.5 = dotted quarter
-        config.restProbability = 0.1;
-        config.patterns = folkPatterns;
-        config.chordProbability = 0.2; // 20% chance of chord
-        config.chordTypes = 'intervals';
-        break;
-      case 3:
-        config.accidentalProbability = 0.12;
+      case 3: // 6d: 3/4 time - both hands
+        config.handMode = 'both';
+        config.timeSignature = { beats: 3, beatType: 4 };
         config.restProbability = 0.1;
         config.durations = [4, 2, 1];
-        config.patterns = [...folkPatterns, ...classicalPatterns.slice(0, 3)];
-        config.chordProbability = 0.25; // More chords
-        config.chordTypes = 'intervals';
-        break;
-    }
-  } else if (level === 6) {
-    // Level 6: Introduce 6ths, triads, and ledger lines above staff
-    config.noteRange = [1, 2, 3, 4, 5, 6, 7, 8]; // Includes high C (ledger line)
-    config.durations = [2, 1];
-    config.maxInterval = 6; // Allow 6ths
-    config.includeLeftHand = true;
-    config.suggestedBpm = 50;
-
-    switch (subLevel) {
-      case 0:
-        // Introduce 6ths and basic intervals
-        config.patterns = [[1, 6], [6, 1], [1, 3, 5], [3, 8]];
-        config.chordProbability = 0.25;
-        config.chordTypes = 'intervals';
-        break;
-      case 1:
-        config.patterns = [...triadicPatterns, ...wideIntervalPatterns.slice(0, 5)];
-        config.chordProbability = 0.3;
-        config.chordTypes = 'intervals';
-        break;
-      case 2:
-        // Add triads
-        config.patterns = [...folkPatterns.slice(0, 3), [1, 5, 8], [8, 5, 1]];
-        config.chordProbability = 0.35;
-        config.chordTypes = 'triads';
-        break;
-      case 3:
-        config.patterns = [...folkPatterns, ...wideIntervalPatterns.slice(0, 8)];
-        config.chordProbability = 0.4;
-        config.chordTypes = 'triads';
+        config.patterns = folkPatterns;
         break;
     }
   } else if (level === 7) {
-    // Level 7: Eighths, 7ths, octaves, triads, more ledger lines
-    config.noteRange = [0, 1, 2, 3, 4, 5, 6, 7, 8]; // Low B (ledger below) to high C
-    config.maxInterval = 8; // Allow octaves
-    config.includeLeftHand = true;
-    config.suggestedBpm = 60;
+    // LEVEL 7: Dotted notes and wider range
+    config.noteRange = [1, 2, 3, 4, 5, 6, 7, 8];
+    config.suggestedBpm = 50;
 
     switch (subLevel) {
-      case 0:
-        config.durations = [0.5, 0.5, 1]; // Pairs of eighths
+      case 0: // 7a: Dotted half notes - RH
+        config.handMode = 'right';
+        config.durations = [3, 2, 1]; // 3 = dotted half
         config.patterns = stepwisePatterns;
-        config.chordProbability = 0.2;
-        config.chordTypes = 'intervals';
         break;
-      case 1:
-        // Introduce octave jumps
-        config.durations = [0.5, 1];
-        config.patterns = [...stepwisePatterns, [1, 8], [8, 1]];
-        config.chordProbability = 0.25;
-        config.chordTypes = 'intervals';
+      case 1: // 7b: Dotted half notes - LH
+        config.handMode = 'left';
+        config.durations = [3, 2, 1];
+        config.patterns = stepwisePatterns;
         break;
-      case 2:
-        config.durations = [0.5, 1, 2];
-        config.restProbability = 0.08;
-        config.patterns = [...folkPatterns, ...wideIntervalPatterns.slice(5, 12)];
-        config.chordProbability = 0.3;
-        config.chordTypes = 'triads';
+      case 2: // 7c: Wider intervals (6ths) - RH
+        config.handMode = 'right';
+        config.durations = [2, 1];
+        config.maxInterval = 6;
+        config.patterns = [[1, 6], [6, 1], [1, 3, 5], [3, 8], ...triadicPatterns];
         break;
-      case 3:
-        config.durations = [0.5, 1, 2, 4];
-        config.restProbability = 0.1;
-        config.patterns = [...folkPatterns, ...classicalPatterns, ...wideIntervalPatterns];
-        config.chordProbability = 0.35;
-        config.chordTypes = 'all';
+      case 3: // 7d: Full range - both hands
+        config.handMode = 'both';
+        config.durations = [3, 2, 1];
+        config.maxInterval = 6;
+        config.patterns = [...folkPatterns, ...wideIntervalPatterns.slice(0, 5)];
         break;
     }
   }
 
   // ========================================
   // NEW KEY LEVELS (Level 8+)
-  // Each key resets to basics: whole notes → half → quarter → full
+  // Each key: RH whole → LH whole → RH varied → Both hands
   // ========================================
 
   else if (level >= 8) {
     config.key = keyInfo;
-    config.includeLeftHand = true;
     config.noteRange = [1, 2, 3, 4, 5, 6, 7, 8]; // Full octave in new key
 
-    // Sub-level determines rhythmic complexity (RESET for each new key!)
+    // Sub-level determines hand and rhythmic complexity
     switch (subLevel) {
-      case 0: // xa: Whole notes - learn the key
+      case 0: // xa: Whole notes - RH (learn the key)
+        config.handMode = 'right';
         config.durations = [4];
         config.restProbability = 0;
         config.patterns = stepwisePatterns;
         config.suggestedBpm = 35;
         break;
-      case 1: // xb: Half notes
-        config.durations = [2];
+      case 1: // xb: Whole notes - LH
+        config.handMode = 'left';
+        config.durations = [4];
         config.restProbability = 0;
-        config.patterns = [...stepwisePatterns, ...triadicPatterns];
-        config.suggestedBpm = 40;
+        config.patterns = stepwisePatterns;
+        config.suggestedBpm = 35;
         break;
-      case 2: // xc: Quarter notes
+      case 2: // xc: Half/quarter notes - RH
+        config.handMode = 'right';
         config.durations = [1, 2];
         config.restProbability = 0.1;
         config.patterns = [...folkPatterns.slice(0, 5), ...triadicPatterns];
-        config.suggestedBpm = 50;
+        config.suggestedBpm = 45;
         break;
-      case 3: // xd: Full variety
-        config.durations = [0.5, 1, 2];
+      case 3: // xd: Full variety - both hands
+        config.handMode = 'both';
+        config.durations = [1, 2];
         config.restProbability = 0.1;
         config.patterns = [...folkPatterns, ...classicalPatterns];
-        config.suggestedBpm = 60;
+        config.suggestedBpm = 50;
         break;
     }
 
@@ -928,50 +950,55 @@ function generateMelody(
   return measures;
 }
 
-function generateBass(
+function generateLeftHand(
   config: LevelConfig,
   beatsPerMeasure: number,
   numMeasures: number
 ): NoteData[][] {
-  if (!config.includeLeftHand) {
-    // Return empty measures with whole rests
-    return Array(numMeasures)
-      .fill(null)
-      .map(() => [{ step: '', alter: 0, octave: 0, duration: beatsPerMeasure, isRest: true }]);
-  }
+  // In 'left' mode, use the same melodic patterns as right hand
+  // In 'both' mode, use simpler accompaniment patterns
+  const isMelodicMode = config.handMode === 'left';
 
   const measures: NoteData[][] = [];
   const baseOctave = 3;
 
-  // Bass patterns - progressively more melodic at higher levels
+  // Choose patterns based on mode
   let bassPatterns: number[][];
-  if (progress.level <= 5) {
-    // Simple harmonic patterns
-    bassPatterns = [[1], [1, 5], [1, 3, 5], [1, 5, 1, 5], [1, 3, 5, 3]];
-  } else if (progress.level <= 6) {
-    // More melodic bass lines
-    bassPatterns = [
-      [1, 2, 3, 2], // Stepwise
-      [1, 3, 5, 3],
-      [5, 4, 3, 2, 1], // Descending scale
-      [1, 2, 3, 4, 5], // Ascending scale
-      ...classicalPatterns.slice(0, 3),
-    ];
+  if (isMelodicMode) {
+    // Left hand as primary melody - use same patterns as right hand config
+    bassPatterns = config.patterns;
   } else {
-    // Fully melodic bass with wider range
-    bassPatterns = [
-      ...stepwisePatterns.slice(0, 5),
-      ...classicalPatterns,
-      [1, 5, 8, 5], // Octave reach
-      [8, 7, 6, 5], // High descending
-    ];
+    // Both hands mode - use accompaniment patterns
+    if (progress.level <= 5) {
+      // Simple harmonic patterns
+      bassPatterns = [[1], [1, 5], [1, 3, 5], [1, 5, 1, 5], [1, 3, 5, 3]];
+    } else if (progress.level <= 6) {
+      // More melodic bass lines
+      bassPatterns = [
+        [1, 2, 3, 2], // Stepwise
+        [1, 3, 5, 3],
+        [5, 4, 3, 2, 1], // Descending scale
+        [1, 2, 3, 4, 5], // Ascending scale
+        ...classicalPatterns.slice(0, 3),
+      ];
+    } else {
+      // Fully melodic bass with wider range
+      bassPatterns = [
+        ...stepwisePatterns.slice(0, 5),
+        ...classicalPatterns,
+        [1, 5, 8, 5], // Octave reach
+        [8, 7, 6, 5], // High descending
+      ];
+    }
   }
+
   const pattern = pick(bassPatterns);
   let patternIdx = 0;
 
-  // Bass uses longer notes at earlier levels
-  const bassDurations =
-    progress.level <= 4 ? [beatsPerMeasure] : progress.level <= 6 ? [2, 1] : config.durations;
+  // In melodic mode, use config durations; in accompaniment mode, prefer longer notes
+  const bassDurations = isMelodicMode
+    ? config.durations
+    : progress.level <= 4 ? [beatsPerMeasure] : progress.level <= 6 ? [2, 1] : config.durations;
 
   const keyRoot = config.key.name.split(' ')[0];
 
@@ -985,18 +1012,31 @@ function generateBass(
         availableDurations = [remainingBeats];
       }
 
-      // Bass prefers longer notes
-      const dur = Math.min(Math.max(...availableDurations), remainingBeats);
+      // In melodic mode, pick any available duration; in accompaniment, prefer longer
+      const dur = isMelodicMode
+        ? Math.min(pick(availableDurations), remainingBeats)
+        : Math.min(Math.max(...availableDurations), remainingBeats);
 
       // Occasional rest
-      if (Math.random() < config.restProbability * 0.5 && notes.length > 0) {
+      if (Math.random() < config.restProbability * (isMelodicMode ? 1 : 0.5) && notes.length > 0) {
         notes.push({ step: '', alter: 0, octave: 0, duration: dur, isRest: true });
         remainingBeats -= dur;
         continue;
       }
 
-      const degree = pattern[patternIdx % pattern.length];
+      // Get next scale degree from pattern
+      let degree = pattern[patternIdx % pattern.length];
       patternIdx++;
+
+      // Occasionally vary (same as melody generation)
+      if (isMelodicMode && Math.random() < 0.2 && notes.length > 0) {
+        degree = degree + pick([-1, 0, 0, 1]);
+      }
+
+      // Keep in allowed range
+      const minDegree = Math.min(...config.noteRange);
+      const maxDegree = Math.max(...config.noteRange);
+      degree = Math.max(minDegree, Math.min(maxDegree, degree));
 
       const noteData = scaleDegreeToNote(degree, keyRoot, baseOctave);
       notes.push({
@@ -1029,8 +1069,27 @@ export function generateMusicXML(): GeneratedMusic {
       ? config.timeSignature.beats / 2
       : config.timeSignature.beats;
 
-  const rightHand = generateMelody(config, beatsPerMeasure, numMeasures);
-  const leftHand = generateBass(config, beatsPerMeasure, numMeasures);
+  // Generate hands based on handMode
+  let rightHand: NoteData[][];
+  let leftHand: NoteData[][];
+
+  if (config.handMode === 'right') {
+    // Right hand melody, left hand rests
+    rightHand = generateMelody(config, beatsPerMeasure, numMeasures);
+    leftHand = Array(numMeasures)
+      .fill(null)
+      .map(() => [{ step: '', alter: 0, octave: 0, duration: beatsPerMeasure, isRest: true }]);
+  } else if (config.handMode === 'left') {
+    // Left hand melody, right hand rests
+    rightHand = Array(numMeasures)
+      .fill(null)
+      .map(() => [{ step: '', alter: 0, octave: 0, duration: beatsPerMeasure, isRest: true }]);
+    leftHand = generateLeftHand(config, beatsPerMeasure, numMeasures);
+  } else {
+    // Both hands
+    rightHand = generateMelody(config, beatsPerMeasure, numMeasures);
+    leftHand = generateLeftHand(config, beatsPerMeasure, numMeasures);
+  }
 
   const divisions = 4;
 
@@ -1040,7 +1099,7 @@ export function generateMusicXML(): GeneratedMusic {
 <score-partwise version="4.0">
   <part-list>
     <score-part id="P1">
-      <part-name>Piano</part-name>
+      <part-name print-object="no"></part-name>
     </score-part>
   </part-list>
   <part id="P1">

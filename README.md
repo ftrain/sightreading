@@ -2,48 +2,59 @@
 
 **[Try it live](https://ftrain.github.io/sightreading)** | [GitHub](https://github.com/ftrain/sightreading)
 
-A web-based sight reading practice app for piano. Generates infinite procedural music and helps you practice reading notation with real-time feedback.
+A web-based sight reading practice app for piano. Generates infinite procedural exercises with a structured curriculum that progresses from simple whole notes to complex rhythms across multiple keys.
 
 ## Features
 
-- **Progressive Difficulty**: Starts with simple whole notes in C major, gradually introducing half notes, quarter notes, eighth notes, rests, accidentals, and varied time signatures
-- **Hands Separate Mode**: Practice right hand, left hand, then both hands together on the same piece before advancing
+- **Structured Curriculum**: 20 levels progressing through C major fundamentals, then new keys (G, F, D, Bb, etc.)
+- **Interleaved Hand Practice**: Each concept is practiced RH → LH → Both hands before advancing
 - **MIDI Input**: Connect your MIDI keyboard for real-time note detection
-  - Correct notes glow teal
-  - Wrong notes glow red
-  - Early notes are accepted (forgiving timing)
-- **Metronome**: Configurable metronome with count-off and 16th note subdivisions
-- **Grand Staff**: Full piano notation with treble and bass clefs
-- **Responsive Display**: Music is displayed in two 4-bar lines that adapt to your screen
+  - Correct notes highlight in teal
+  - Wrong notes highlight in red
+  - Forgiving timing (early notes accepted)
+- **Metronome**: Count-off with 4-3-2-1 display, 16th note subdivisions
+- **Grand Staff**: Clean notation with treble and bass clefs
+- **Progress Tracking**: Mastery system requires consistent correct play before advancing
+- **Tempo Progression**: Start slow (30 BPM), increase as you master each level
+
+## Curriculum Overview
+
+### C Major Foundation (Levels 1-7)
+
+| Level | Focus | Hands |
+|-------|-------|-------|
+| 1 | Whole notes, C-G range | RH only |
+| 2 | Whole notes, bass clef intro | LH only |
+| 3 | Whole notes, coordination | Both |
+| 4 | Half notes | RH → LH → Both |
+| 5 | Quarter notes | RH → LH → Both |
+| 6 | Rests, 3/4 time | RH → LH → Both |
+| 7 | Dotted notes, wider intervals | RH → LH → Both |
+
+### New Keys (Levels 8+)
+
+Each new key follows the same pattern:
+- 8a-d: G major (1 sharp)
+- 9a-d: F major (1 flat)
+- 10a-d: D major (2 sharps)
+- And so on through the circle of fifths...
 
 ## Controls
 
-- **BPM**: Set the tempo (default 30 - very slow for beginners)
-- **Metronome**: Toggle metronome on/off
-- **Vol**: Adjust metronome volume
-- **Hands Separate**: When enabled, practice RH → LH → Both hands before advancing
-- **MIDI**: Select your MIDI input device
-- **Level +/-**: Manually adjust difficulty level
+- **Tempo**: Set BPM (starts at 30 for beginners)
+- **Metronome**: Toggle on/off, adjust volume
+- **Level +/-**: Manually adjust difficulty
+- **Options**: Access level jump, key override, and fingering settings
 - **Start/Stop**: Begin or end practice session
-
-## Difficulty Levels
-
-1. C major, whole notes only, stepwise motion
-2. Whole and half notes with rests
-3. Quarter notes
-4. Quarter notes with rests
-5. Quarter notes with accidentals and rests
-6. Mix of quarter, half, and whole notes
-7. Add eighth notes (beamed)
-8-10. Full complexity with varied keys and time signatures
 
 ## Tech Stack
 
 - [Vite](https://vitejs.dev/) - Build tool
 - [TypeScript](https://www.typescriptlang.org/) - Type safety
-- [Verovio](https://www.verovio.org/) - Music notation rendering (MusicXML to SVG)
-- [Tone.js](https://tonejs.github.io/) - Web audio (piano samples, metronome)
-- [Vitest](https://vitest.dev/) - Testing framework
+- [Verovio](https://www.verovio.org/) - Music notation rendering (MusicXML → SVG)
+- [Tone.js](https://tonejs.github.io/) - Web audio (metronome, sounds)
+- [Playwright](https://playwright.dev/) - E2E testing
+- [Vitest](https://vitest.dev/) - Unit testing
 - Web MIDI API - MIDI keyboard input
 
 ## Development
@@ -55,31 +66,43 @@ npm install
 # Start dev server
 npm run dev
 
-# Run tests
+# Run unit tests
 npm test
 
-# Run tests in watch mode
-npm run test:watch
+# Run E2E tests
+npx playwright test
 
 # Build for production
 npm run build
+
+# Deploy to GitHub Pages
+npm run deploy
 ```
 
-## Usage
+## Architecture
 
-1. Open the app in a browser
-2. Connect a MIDI keyboard (optional but recommended)
-3. Select your MIDI device from the dropdown
-4. Click "Start"
-5. Play the highlighted notes on your keyboard
-6. Practice until you can play each piece without mistakes to advance
+```
+src/
+├── main.ts           # App entry, UI, playback scheduling
+├── musicGenerator.ts # Procedural music generation, curriculum
+├── scheduler.ts      # Timing utilities for playback
+├── fingeringEngine.ts# Piano fingering suggestions
+├── theoryAnalyzer.ts # Music theory analysis (unused)
+└── __tests__/        # Unit tests
+```
+
+Key data flow:
+1. `musicGenerator` creates `NoteData[]` for each hand
+2. `buildTimingEvents()` extracts timing from note data
+3. `scheduleMusic()` schedules playback via Tone.js
+4. `visualGroups` maps SVG elements for highlighting
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
 LGPL-3.0 - See [LICENSE](LICENSE) for details.
 
-This project uses [Verovio](https://www.verovio.org/) which is licensed under LGPL-3.0.
+Uses [Verovio](https://www.verovio.org/) (LGPL-3.0).
