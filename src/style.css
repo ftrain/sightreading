@@ -455,6 +455,44 @@ body {
   height: 20px;
 }
 
+/* Metronome toggle button */
+.metronome-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.metronome-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.metronome-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.metronome-btn.active:hover {
+  background: var(--accent-light);
+  border-color: var(--accent-light);
+}
+
+.metronome-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
 /* ============================================
    OPTIONS PANEL
    ============================================ */

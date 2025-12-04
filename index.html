@@ -75,6 +75,17 @@
           </button>
         </div>
 
+        <div class="control-section metronome">
+          <button id="metronomeToggle" class="metronome-btn active" aria-label="Toggle metronome" aria-pressed="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <!-- Metronome icon -->
+              <path d="M12 2L8 22h8L12 2z"/>
+              <path d="M12 6l5 8"/>
+              <line x1="6" y1="22" x2="18" y2="22"/>
+            </svg>
+          </button>
+        </div>
+
         <div class="control-section options">
           <button id="optionsToggle" class="options-btn" aria-label="Options" aria-expanded="false">
             <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="12" cy="19" r="2"/></svg>
@@ -144,10 +155,6 @@
 
         <div class="options-group">
           <h3>Learning Aids</h3>
-          <label class="option-row">
-            <span>Show Hints</span>
-            <input type="checkbox" id="showHints" checked />
-          </label>
           <label class="option-row">
             <span>Show Fingering</span>
             <input type="checkbox" id="showFingering" />

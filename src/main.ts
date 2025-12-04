@@ -4,6 +4,7 @@ import { VerovioToolkit } from 'verovio/esm';
 import * as Tone from 'tone';
 import {
   generateMusicXML,
+  regenerateXMLFromNotes,
   getLevel,
   setLevel,
   setSubLevel,
@@ -189,6 +190,16 @@ function rerenderCurrentMusic() {
   const notation = document.getElementById('notation')!;
   notation.innerHTML = svg;
   groupNotesByPosition();
+}
+
+// Regenerate XML from current notes (for fingering toggle)
+function regenerateCurrentMusicXML() {
+  if (currentRightHandNotes.length === 0 && currentLeftHandNotes.length === 0) return;
+  currentPieceXml = regenerateXMLFromNotes(
+    currentRightHandNotes,
+    currentLeftHandNotes,
+    currentTimeSig
+  );
 }
 
 async function initAudio() {
@@ -750,7 +761,27 @@ function setupControls() {
 
   metronomeCheckbox.addEventListener('change', () => {
     metronomeEnabled = metronomeCheckbox.checked;
+    // Sync the toolbar button state
+    const metronomeBtn = document.getElementById('metronomeToggle');
+    if (metronomeBtn) {
+      metronomeBtn.classList.toggle('active', metronomeCheckbox.checked);
+      metronomeBtn.setAttribute('aria-pressed', String(metronomeCheckbox.checked));
+    }
   });
+
+  // Metronome toggle button in control bar
+  const metronomeToggle = document.getElementById('metronomeToggle');
+  if (metronomeToggle) {
+    metronomeToggle.addEventListener('click', () => {
+      const isActive = metronomeToggle.classList.toggle('active');
+      metronomeToggle.setAttribute('aria-pressed', String(isActive));
+      metronomeEnabled = isActive;
+      // Sync the options panel checkbox
+      if (metronomeCheckbox) {
+        metronomeCheckbox.checked = isActive;
+      }
+    });
+  }
 
   const metronomeVolumeSlider = document.getElementById(
     'metronomeVolume'
@@ -769,11 +800,10 @@ function setupControls() {
     levelJumpSelect.addEventListener('change', () => {
       const newLevel = parseInt(levelJumpSelect.value);
       if (newLevel >= 1) {
+        if (isPlaying) stop();
         setLevel(newLevel);
         setSubLevel(0);
-        if (!isPlaying) {
-          generateAndRender();
-        }
+        generateAndRender();
         updateLevelDisplay();
       }
     });
@@ -783,11 +813,10 @@ function setupControls() {
   const keySelect = document.getElementById('keySelect') as HTMLSelectElement;
   if (keySelect) {
     keySelect.addEventListener('change', () => {
+      if (isPlaying) stop();
       const selectedKey = keySelect.value || null;
       setKeyOverride(selectedKey);
-      if (!isPlaying) {
-        generateAndRender();
-      }
+      generateAndRender();
     });
   }
 
@@ -803,10 +832,9 @@ function setupControls() {
         fingeringBtn.classList.toggle('active', showFingeringCheckbox.checked);
         fingeringBtn.setAttribute('aria-pressed', String(showFingeringCheckbox.checked));
       }
-      // Regenerate to include/exclude fingering in notation
-      if (!isPlaying) {
-        generateAndRender();
-      }
+      // Re-render current music with fingering (don't regenerate new music)
+      regenerateCurrentMusicXML();
+      rerenderCurrentMusic();
     });
   }
 
@@ -821,10 +849,9 @@ function setupControls() {
       if (showFingeringCheckbox) {
         showFingeringCheckbox.checked = isActive;
       }
-      // Regenerate to include/exclude fingering in notation
-      if (!isPlaying) {
-        generateAndRender();
-      }
+      // Re-render current music with fingering (don't regenerate new music)
+      regenerateCurrentMusicXML();
+      rerenderCurrentMusic();
     });
   }
 
@@ -847,10 +874,9 @@ function setupControls() {
       if (bpmInputEl) bpmInputEl.value = String(newBpm);
       updateLevelDisplay();
     } else {
+      if (isPlaying) stop();
       incrementLevel();
-      if (!isPlaying) {
-        generateAndRender();
-      }
+      generateAndRender();
       updateLevelDisplay();
     }
   });
@@ -858,10 +884,9 @@ function setupControls() {
   levelDownBtn?.addEventListener('click', () => {
     const current = getLevel();
     if (current > 1) {
+      if (isPlaying) stop();
       setLevel(current - 1);
-      if (!isPlaying) {
-        generateAndRender();
-      }
+      generateAndRender();
       updateLevelDisplay();
     }
   });
@@ -871,6 +896,22 @@ function setupControls() {
       stop();
     } else {
       await start();
+    }
+  });
+
+  // Spacebar to toggle play/pause
+  document.addEventListener('keydown', async (e) => {
+    // Ignore if user is typing in an input field
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) {
+      return;
+    }
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (isPlaying) {
+        stop();
+      } else {
+        await start();
+      }
     }
   });
 }
