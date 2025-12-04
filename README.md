@@ -6,7 +6,7 @@ A web-based sight reading practice app for piano. Generates infinite procedural 
 
 ## Features
 
-- **Structured Curriculum**: 20 levels progressing through C major fundamentals, then new keys (G, F, D, Bb, etc.)
+- **Structured Curriculum**: 23 levels progressing through C major fundamentals, advanced rhythms, then new keys (G, F, D, Bb, etc.)
 - **Interleaved Hand Practice**: Each concept is practiced RH → LH → Both hands before advancing
 - **MIDI Input**: Connect your MIDI keyboard for real-time note detection
   - Correct notes highlight in teal
@@ -31,12 +31,20 @@ A web-based sight reading practice app for piano. Generates infinite procedural 
 | 6 | Rests, 3/4 time | RH → LH → Both |
 | 7 | Dotted notes, wider intervals | RH → LH → Both |
 
-### New Keys (Levels 8+)
+### C Major Advanced Rhythms (Levels 8-10)
 
-Each new key follows the same pattern:
-- 8a-d: G major (1 sharp)
-- 9a-d: F major (1 flat)
-- 10a-d: D major (2 sharps)
+| Level | Focus | Hands |
+|-------|-------|-------|
+| 8 | Eighth notes | RH → LH → Both |
+| 9 | Dotted eighth rhythms | RH → LH → Both |
+| 10 | Sixteenth notes | RH → LH → Both |
+
+### New Keys (Levels 11+)
+
+Each new key follows the same pattern (RH whole → LH whole → RH varied → Both):
+- 11a-d: G major (1 sharp)
+- 12a-d: F major (1 flat)
+- 13a-d: D major (2 sharps)
 - And so on through the circle of fifths...
 
 ## Controls
@@ -83,11 +91,20 @@ npm run deploy
 
 ```
 src/
+├── core/             # Shared types, events, utilities
+├── curriculum/       # Lessons and progress tracking
+│   └── lessons/      # Lesson implementations
+├── input/            # MIDI and performance tracking
+├── music/            # Music generation and representation
+│   ├── generators/   # Melody, pattern, scale generation
+│   ├── sources/      # MusicSource implementations
+│   └── xml/          # MusicXML building
+├── playback/         # Audio playback engine
+├── rendering/        # Visual rendering (Verovio)
 ├── main.ts           # App entry, UI, playback scheduling
 ├── musicGenerator.ts # Procedural music generation, curriculum
 ├── scheduler.ts      # Timing utilities for playback
 ├── fingeringEngine.ts# Piano fingering suggestions
-├── theoryAnalyzer.ts # Music theory analysis (unused)
 └── __tests__/        # Unit tests
 ```
 
