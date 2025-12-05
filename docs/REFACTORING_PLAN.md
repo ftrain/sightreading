@@ -2,26 +2,34 @@
 
 This document outlines the technical debt, proposed improvements, and feature roadmap for the Sight Reading application.
 
-## Current State Analysis
+## Current State (Updated)
 
-### Code Metrics
+### Code Metrics After Refactoring
 
-| File | Lines | Issues |
-|------|-------|--------|
-| `main.ts` | 1,162 | Global state, mixed concerns, duplicated utilities |
-| `musicGenerator.ts` | 1,542 | 362-line function, repeated patterns, coupled to DOM |
-| `scheduler.ts` | 104 | Good, but partially duplicated in playback/ |
-| `fingeringEngine.ts` | 205 | Duplicate types, external dep (tonal) |
+| File | Before | After | Reduction |
+|------|--------|-------|-----------|
+| `musicGenerator.ts` | 1,544 | 398 | **-1,146 (74%)** |
+| `main.ts` | 1,216 | 1,185 | -31 (3%) |
+| `levelConfigs.ts` | (new) | 269 | Data-driven config |
+| `PlaybackState.ts` | (new) | 128 | State service |
+| `analytics.ts` | (new) | 90 | Performance tracking |
 
-### Issue Summary
+### Completed Phases
+
+- ✅ **Phase 1**: Duplicate code elimination
+- ✅ **Phase 2**: PlaybackState service created
+- ✅ **Phase 3**: Data-driven getLevelConfig() (362 → 30 lines)
+- ✅ **Phase 4**: MIDI and MusicXML file import
+- ✅ **Phase 5**: TypeScript strict mode (already enabled)
+- ✅ **Feature**: Performance analytics tracking
+
+### Remaining Issues
 
 | Category | Count | Severity |
 |----------|-------|----------|
-| Duplicated functions | 3 | High |
-| Duplicated types | 2 | Medium |
-| Global state variables | 17 | High |
-| Functions > 100 lines | 3 | High |
-| Magic numbers | 15+ | Medium |
+| Global state variables | 15 | Medium |
+| Functions > 100 lines | 2 | Medium |
+| Magic numbers | 10+ | Low |
 
 ---
 

@@ -6,6 +6,7 @@ import {
   generateMusicXML,
   regenerateXMLFromNotes,
   getLevel,
+  getSubLevel,
   setLevel,
   setSubLevel,
   incrementLevel,
@@ -32,6 +33,7 @@ import {
   createXmlSource,
 } from './music/sources';
 import { buildMusicXML } from './music/xml/builder';
+import { recordAttempt, getAccuracy } from './app/analytics';
 
 // State
 let toolkit: VerovioToolkit;
@@ -75,8 +77,8 @@ let metronomeVolume = -20; // dB base for metronome (quieter default)
 // Store the current piece's XML
 let currentPieceXml: string = '';
 
-// Performance tracking - did user play all notes correctly?
-let hadMistake = false;
+// Performance tracking
+let mistakeCount = 0;
 
 // Current lesson info
 let currentLessonDescription = '';
@@ -368,11 +370,18 @@ function updateLevelDisplay() {
   if (progressInfo) {
     const remaining = getRepetitionsRemaining();
     const tempoMasteryRemaining = getBpmMasteryRemaining();
+    const accuracy = getAccuracy(getLevel(), getSubLevel());
 
     // Show both note mastery and tempo mastery progress
     let progressText = '';
     if (remaining > 0) {
       progressText = `${remaining} more to advance`;
+    }
+
+    // Show accuracy if we have data
+    if (accuracy > 0) {
+      progressText += progressText ? ' | ' : '';
+      progressText += `${accuracy}% accuracy`;
     }
 
     // Show tempo increase suggestion if mastered at current tempo
@@ -622,7 +631,7 @@ function checkNoteMatch(playedNote: string) {
     currentElements.forEach((el) => {
       if (!el.classList.contains('correct')) {
         el.classList.add('wrong');
-        hadMistake = true;
+        mistakeCount++;
       }
     });
   }
@@ -959,7 +968,7 @@ async function start() {
   playPauseBtn.setAttribute('aria-label', 'Stop');
 
   currentBeatIndex = 0;
-  hadMistake = false;
+  mistakeCount = 0;
 
   groupNotesByPosition();
 
@@ -1058,13 +1067,18 @@ function onPieceComplete() {
     el.classList.add('past');
   });
 
+  // Record analytics
+  const noteCount = currentRightHandNotes.filter(n => !n.isRest).length +
+    currentLeftHandNotes.filter(n => !n.isRest).length;
+  recordAttempt(getLevel(), getSubLevel(), noteCount, mistakeCount);
+
   // Advance level if no mistakes
-  if (!hadMistake) {
+  if (mistakeCount === 0) {
     incrementLevel();
   }
 
   // Reset tracking for next round
-  hadMistake = false;
+  mistakeCount = 0;
   currentBeatIndex = 0;
 
   // Generate new piece
