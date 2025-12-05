@@ -21,12 +21,17 @@ import {
   setIncludeFingering,
   setKeyOverride,
 } from './musicGenerator';
-import type { NoteData, TimingEvent } from './core/types';
+import type { NoteData, TimingEvent, KeyInfo } from './core/types';
 import { midiToNoteName, normalizeNoteName } from './core/noteUtils';
 import {
   shouldAllowMetronomeClick,
   beatsToSeconds,
 } from './scheduler';
+import {
+  createMidiSource,
+  createXmlSource,
+} from './music/sources';
+import { buildMusicXML } from './music/xml/builder';
 
 // State
 let toolkit: VerovioToolkit;
@@ -885,6 +890,106 @@ function setupControls() {
       }
     }
   });
+
+  // File import handler
+  const importBtn = document.getElementById('importBtn');
+  const fileInput = document.getElementById('fileInput') as HTMLInputElement;
+
+  if (importBtn && fileInput) {
+    importBtn.addEventListener('click', () => {
+      fileInput.click();
+    });
+
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+
+      if (isPlaying) stop();
+
+      const filename = file.name.toLowerCase();
+      let result;
+
+      if (filename.endsWith('.mid') || filename.endsWith('.midi')) {
+        result = await createMidiSource(file);
+      } else if (filename.endsWith('.xml') || filename.endsWith('.musicxml') || filename.endsWith('.mxl')) {
+        result = await createXmlSource(file);
+      } else {
+        alert('Unsupported file type. Please use .mid, .midi, .xml, .musicxml, or .mxl files.');
+        fileInput.value = '';
+        return;
+      }
+
+      if (!result.ok) {
+        alert(`Import failed: ${result.error.message}`);
+        fileInput.value = '';
+        return;
+      }
+
+      // Load the imported music
+      const musicData = result.value.getMusic();
+      loadImportedMusic(musicData, file.name);
+
+      // Reset file input for future imports
+      fileInput.value = '';
+    });
+  }
+}
+
+// Load imported music data into the app
+function loadImportedMusic(
+  musicData: { rightHandNotes: NoteData[]; leftHandNotes: NoteData[]; timeSignature: { beats: number; beatType: number }; key: KeyInfo; metadata: { description: string; suggestedBpm: number } },
+  filename: string
+) {
+  // Update current notes
+  currentRightHandNotes = musicData.rightHandNotes;
+  currentLeftHandNotes = musicData.leftHandNotes;
+  currentTimeSig = musicData.timeSignature;
+
+  // Update BPM from import
+  const suggestedBpm = musicData.metadata.suggestedBpm;
+  if (suggestedBpm) {
+    bpm = suggestedBpm;
+    const bpmInput = document.getElementById('bpm') as HTMLInputElement;
+    if (bpmInput) bpmInput.value = String(suggestedBpm);
+    setBpm(suggestedBpm);
+  }
+
+  // Build MusicXML from imported notes
+  currentPieceXml = buildMusicXML(
+    currentRightHandNotes,
+    currentLeftHandNotes,
+    {
+      key: musicData.key,
+      timeSignature: currentTimeSig,
+    }
+  );
+
+  // Update lesson description
+  currentLessonDescription = musicData.metadata.description || `Imported: ${filename}`;
+
+  // Render the music
+  renderCurrentMusic();
+
+  // Update display
+  const lessonInfo = document.getElementById('lessonInfo');
+  if (lessonInfo) {
+    lessonInfo.textContent = currentLessonDescription;
+  }
+
+  const levelDisplay = document.getElementById('levelDisplay');
+  if (levelDisplay) {
+    levelDisplay.textContent = '♪';
+  }
+
+  const levelIndicator = document.getElementById('levelIndicator');
+  if (levelIndicator) {
+    levelIndicator.textContent = 'Imported';
+  }
+
+  const progressInfo = document.getElementById('progressInfo');
+  if (progressInfo) {
+    progressInfo.textContent = '';
+  }
 }
 
 async function start() {

@@ -493,6 +493,33 @@ body {
   height: 20px;
 }
 
+/* Import Button */
+.import-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.import-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.import-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
 /* ============================================
    OPTIONS PANEL
    ============================================ */
