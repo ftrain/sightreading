@@ -26,6 +26,12 @@ import {
   shouldAllowMetronomeClick,
   beatsToSeconds,
 } from './scheduler';
+import {
+  parseMusicXML,
+  ProgressivePracticeSession,
+  getStepTypeLabel,
+} from './upload';
+import { buildMusicXML } from './music/xml/builder';
 
 // State
 let toolkit: VerovioToolkit;
@@ -34,16 +40,11 @@ let currentBeatIndex = 0;
 let sampler: Tone.Sampler | null = null;
 let scheduledEvents: number[] = [];
 
-// SVG elements grouped by beat position (for visual highlighting only)
-interface VisualGroup {
-  elements: SVGElement[];
-}
-let visualGroups: VisualGroup[] = [];
-
 // Timing data from music generator (source of truth for durations and playback)
 interface TimingEvent {
   time: number; // Start time in beats
   duration: number; // Duration in beats
+  pitches: string[]; // Pitches to play (e.g., ['C4', 'E4', 'G4'])
 }
 let timingEvents: TimingEvent[] = [];
 
@@ -81,6 +82,11 @@ let currentLessonDescription = '';
 // Current piece notes for playback timing (source of truth)
 let currentRightHandNotes: NoteData[] = [];
 let currentLeftHandNotes: NoteData[] = [];
+
+// App mode: 'levels' for generated exercises, 'practice' for uploaded files
+type AppMode = 'levels' | 'practice';
+let currentMode: AppMode = 'levels';
+let practiceSession: ProgressivePracticeSession | null = null;
 
 
 // Detect mobile device and orientation
@@ -187,7 +193,6 @@ function rerenderCurrentMusic() {
   const svg = toolkit.renderToSVG(1);
   const notation = document.getElementById('notation')!;
   notation.innerHTML = svg;
-  groupNotesByPosition();
 }
 
 // Regenerate XML from current notes (for fingering toggle)
@@ -325,8 +330,6 @@ function renderCurrentMusic() {
   // Build timing events from the source note data (not from SVG)
   buildTimingEvents();
 
-  // Group SVG elements by position for visual highlighting
-  groupNotesByPosition();
 }
 
 // Build timing events from the generated note data
@@ -334,29 +337,52 @@ function renderCurrentMusic() {
 function buildTimingEvents() {
   timingEvents = [];
 
-  // Merge right and left hand notes by time position
-  // Use string keys to avoid floating point precision issues
-  const allEvents: Map<string, number> = new Map(); // time (rounded) -> shortest duration at that time
-
-  // Round time to avoid floating point precision issues (e.g., 7.0 vs 7.000000000000001)
+  // Build a map of time -> { duration, pitches } from source note data
+  // This is the source of truth for what to play and when
   const roundTime = (t: number) => Math.round(t * 1000) / 1000;
 
+  interface EventData {
+    duration: number;
+    pitches: string[];
+  }
+  const allEvents: Map<string, EventData> = new Map();
+
+  // Process right hand notes
   let currentTime = 0;
   for (const note of currentRightHandNotes) {
     const timeKey = String(roundTime(currentTime));
+    const pitch = noteDataToPitch(note);
+
     const existing = allEvents.get(timeKey);
-    if (existing === undefined || note.duration < existing) {
-      allEvents.set(timeKey, note.duration);
+    if (existing) {
+      // Add pitch to existing event (may be chord or simultaneous with LH)
+      if (pitch) existing.pitches.push(pitch);
+      // Use shortest duration at this time
+      if (note.duration < existing.duration) existing.duration = note.duration;
+    } else {
+      allEvents.set(timeKey, {
+        duration: note.duration,
+        pitches: pitch ? [pitch] : [],
+      });
     }
     currentTime += note.duration;
   }
 
+  // Process left hand notes
   currentTime = 0;
   for (const note of currentLeftHandNotes) {
     const timeKey = String(roundTime(currentTime));
+    const pitch = noteDataToPitch(note);
+
     const existing = allEvents.get(timeKey);
-    if (existing === undefined || note.duration < existing) {
-      allEvents.set(timeKey, note.duration);
+    if (existing) {
+      if (pitch) existing.pitches.push(pitch);
+      if (note.duration < existing.duration) existing.duration = note.duration;
+    } else {
+      allEvents.set(timeKey, {
+        duration: note.duration,
+        pitches: pitch ? [pitch] : [],
+      });
     }
     currentTime += note.duration;
   }
@@ -367,12 +393,16 @@ function buildTimingEvents() {
   for (let i = 0; i < sortedTimes.length; i++) {
     const time = sortedTimes[i];
     const timeKey = String(time);
-    const nextTime = i < sortedTimes.length - 1 ? sortedTimes[i + 1] : time + allEvents.get(timeKey)!;
-    // Duration is time until next event (or the note's own duration if last)
+    const eventData = allEvents.get(timeKey)!;
+    const nextTime = i < sortedTimes.length - 1 ? sortedTimes[i + 1] : time + eventData.duration;
     const duration = nextTime - time;
-    timingEvents.push({ time, duration });
+    timingEvents.push({ time, duration, pitches: eventData.pitches });
   }
 
+  // Debug: log timing events with pitches
+  console.log('Timing events built:', timingEvents.map((e, i) =>
+    `${i}: t=${e.time.toFixed(2)} d=${e.duration.toFixed(2)} [${e.pitches.join(', ')}]`
+  ));
 }
 
 function updateLevelDisplay() {
@@ -427,133 +457,6 @@ function updateLevelDisplay() {
   }
 }
 
-
-function groupNotesByPosition() {
-  const notation = document.getElementById('notation')!;
-  const elements = notation.querySelectorAll('.note, .rest');
-  const notationRect = notation.getBoundingClientRect();
-
-  // Include all staves (both hands)
-  const staffToInclude: number | null = null;
-
-  // First, collect all elements with their positions
-  interface NotePosition {
-    el: SVGElement;
-    x: number;
-    y: number;
-    staff: number | null;
-  }
-  const notePositions: NotePosition[] = [];
-
-  // Find staff line positions to determine which system each note belongs to
-  const staffLines = notation.querySelectorAll('.staff');
-  const systemYRanges: { top: number; bottom: number }[] = [];
-
-  // Group staff lines into systems (each system has 2 staves for grand staff)
-  for (let i = 0; i < staffLines.length; i += 2) {
-    const staff1Rect = staffLines[i]?.getBoundingClientRect();
-    const staff2Rect = staffLines[i + 1]?.getBoundingClientRect();
-    if (staff1Rect && staff2Rect) {
-      systemYRanges.push({
-        top: Math.min(staff1Rect.top, staff2Rect.top) - notationRect.top,
-        bottom: Math.max(staff1Rect.bottom, staff2Rect.bottom) - notationRect.top,
-      });
-    }
-  }
-
-  elements.forEach((el) => {
-    const rect = el.getBoundingClientRect();
-    if (rect.height === 0) return;
-
-    const relativeY = rect.top - notationRect.top;
-    const relativeX = rect.left - notationRect.left;
-
-    // Determine which system this note is in
-    let systemIndex = 0;
-    for (let i = 0; i < systemYRanges.length; i++) {
-      if (
-        relativeY >= systemYRanges[i].top &&
-        relativeY <= systemYRanges[i].bottom
-      ) {
-        systemIndex = i;
-        break;
-      }
-      // If we're past this system's range, try the next one
-      if (relativeY > systemYRanges[i].bottom) {
-        systemIndex = i + 1;
-      }
-    }
-
-    // Determine staff within the system (1 = treble/top, 2 = bass/bottom)
-    let noteStaff: number | null = null;
-    if (systemYRanges[systemIndex]) {
-      const systemMidpoint =
-        (systemYRanges[systemIndex].top + systemYRanges[systemIndex].bottom) / 2;
-      noteStaff = relativeY < systemMidpoint ? 1 : 2;
-    }
-
-    // If in single-hand mode, only include notes from that staff
-    if (
-      staffToInclude !== null &&
-      noteStaff !== null &&
-      noteStaff !== staffToInclude
-    ) {
-      return;
-    }
-
-    notePositions.push({
-      el: el as SVGElement,
-      x: relativeX,
-      y: systemIndex * 10000 + relativeX, // Sort key: system first, then x position
-      staff: noteStaff,
-    });
-  });
-
-  // Sort by system (y-based) then by x position
-  notePositions.sort((a, b) => a.y - b.y);
-
-  // Group notes that are at the same x position (within tolerance)
-  const tolerance = 5;
-  const positionMap = new Map<number, SVGElement[]>();
-
-  notePositions.forEach(({ el, x }) => {
-    let foundKey: number | null = null;
-    for (const key of positionMap.keys()) {
-      if (Math.abs(key - x) < tolerance) {
-        foundKey = key;
-        break;
-      }
-    }
-
-    if (foundKey !== null) {
-      positionMap.get(foundKey)!.push(el);
-    } else {
-      positionMap.set(x, [el]);
-    }
-  });
-
-  // Build beat groups in order of first appearance
-  const seenKeys = new Set<number>();
-  visualGroups = [];
-
-  notePositions.forEach(({ x }) => {
-    // Find the key this x belongs to
-    let key: number | null = null;
-    for (const k of positionMap.keys()) {
-      if (Math.abs(k - x) < tolerance) {
-        key = k;
-        break;
-      }
-    }
-
-    if (key !== null && !seenKeys.has(key)) {
-      seenKeys.add(key);
-      const els = positionMap.get(key)!;
-      // Only store elements for visual highlighting - timing comes from timingEvents
-      visualGroups.push({ elements: els });
-    }
-  });
-}
 
 function setupMIDI() {
   if (!navigator.requestMIDIAccess) {
@@ -648,36 +551,84 @@ function checkNoteMatch(playedNote: string) {
   const notation = document.getElementById('notation')!;
   const normalizedPlayed = normalizeNote(playedNote);
 
-  // Check current notes
-  const currentElements = notation.querySelectorAll('.note.current');
-  let matchedAny = false;
+  // Get expected pitches from source data (not from Verovio)
+  // currentBeatIndex points to the NEXT beat, so current beat is currentBeatIndex - 1
+  const currentBeatIdx = currentBeatIndex - 1;
+  const currentTimingEvent = currentBeatIdx >= 0 ? timingEvents[currentBeatIdx] : null;
+  const expectedPitches = currentTimingEvent?.pitches ?? [];
 
-  currentElements.forEach((el) => {
-    const noteData = getNoteDataFromElement(el as SVGElement);
-    if (noteData && normalizeNote(noteData) === normalizedPlayed) {
-      el.classList.add('correct');
-      el.classList.remove('wrong');
-      matchedAny = true;
+  // Check if played note matches any expected pitch
+  const matchedAny = expectedPitches.some(p => normalizeNote(p) === normalizedPlayed);
+
+  // Get current note elements
+  const currentElements = Array.from(notation.querySelectorAll('.note.current'));
+
+  if (matchedAny && currentElements.length > 0) {
+    // Find which element to mark by matching pitch via Verovio's pname/oct
+    // We use Verovio for the base pitch (pname) but use source data for accidentals
+    for (const el of currentElements) {
+      if (el.classList.contains('correct')) continue;
+
+      const id = el.getAttribute('id');
+      if (!id) continue;
+
+      const elemData = toolkit.getElementAttr(id);
+      if (!elemData || !elemData.pname || !elemData.oct) continue;
+
+      // Get base note from Verovio (e.g., 'g', '4')
+      const basePitch = (elemData.pname as string).toUpperCase();
+      const octave = elemData.oct;
+
+      // Check if played note matches this element's base pitch
+      // The played note is already normalized (e.g., 'G#4')
+      // We need to check if the base letter and octave match
+      const playedBase = normalizedPlayed.charAt(0);
+      const playedOctave = normalizedPlayed.slice(-1);
+
+      if (basePitch === playedBase && octave === playedOctave) {
+        el.classList.add('correct');
+        el.classList.remove('wrong');
+        break; // Only mark one element per played note
+      }
     }
-  });
+  }
 
   // Also check upcoming notes (be forgiving of early plays)
-  // Look at the next beat group that hasn't been played yet
-  if (!matchedAny && currentBeatIndex < visualGroups.length) {
-    const upcomingGroup = visualGroups[currentBeatIndex];
-    for (const el of upcomingGroup.elements) {
-      if (el.classList.contains('note')) {
-        const noteData = getNoteDataFromElement(el);
-        if (noteData && normalizeNote(noteData) === normalizedPlayed) {
-          // Mark as correct early - it will show when the note becomes current
-          el.setAttribute('data-early-correct', 'true');
-          matchedAny = true;
+  let matchedUpcoming = false;
+  if (!matchedAny && currentBeatIndex < timingEvents.length) {
+    const upcomingEvent = timingEvents[currentBeatIndex];
+    const upcomingMatched = upcomingEvent.pitches.some(p => normalizeNote(p) === normalizedPlayed);
+
+    if (upcomingMatched) {
+      // Find the upcoming note elements
+      const upcomingTimeMs = upcomingEvent.time * 500;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const upcomingElements = (toolkit as any).getElementsAtTime(upcomingTimeMs) as { notes?: string[]; page?: number } | undefined;
+
+      if (upcomingElements && upcomingElements.notes) {
+        for (const noteId of upcomingElements.notes) {
+          const el = document.getElementById(noteId);
+          if (!el || !el.classList.contains('note')) continue;
+
+          const elemData = toolkit.getElementAttr(noteId);
+          if (!elemData || !elemData.pname || !elemData.oct) continue;
+
+          const basePitch = (elemData.pname as string).toUpperCase();
+          const octave = elemData.oct;
+          const playedBase = normalizedPlayed.charAt(0);
+          const playedOctave = normalizedPlayed.slice(-1);
+
+          if (basePitch === playedBase && octave === playedOctave) {
+            el.setAttribute('data-early-correct', 'true');
+            matchedUpcoming = true;
+            break;
+          }
         }
       }
     }
   }
 
-  if (!matchedAny && currentElements.length > 0) {
+  if (!matchedAny && !matchedUpcoming && currentElements.length > 0) {
     currentElements.forEach((el) => {
       if (!el.classList.contains('correct')) {
         el.classList.add('wrong');
@@ -696,24 +647,6 @@ function normalizeNote(note: string): string {
     .replace('Ab', 'G#')
     .replace('Bb', 'A#')
     .replace('Cb', 'B');
-}
-
-function getNoteDataFromElement(el: SVGElement): string | null {
-  const id = el.getAttribute('id');
-  if (id && toolkit) {
-    try {
-      const elemData = toolkit.getElementAttr(id);
-      if (elemData && elemData.pname && elemData.oct) {
-        let noteName = (elemData.pname as string).toUpperCase();
-        if (elemData.accid === 's') noteName += '#';
-        if (elemData.accid === 'f') noteName += 'b';
-        return `${noteName}${elemData.oct}`;
-      }
-    } catch {
-      // Fallback
-    }
-  }
-  return null;
 }
 
 function setupControls() {
@@ -868,30 +801,72 @@ function setupControls() {
     }
   });
 
-  levelUpBtn?.addEventListener('click', () => {
-    // If tempo mastery achieved, increase tempo instead of level
-    if (shouldIncreaseTempo()) {
-      increaseTempo();
-      const newBpm = getCurrentBpm();
-      bpm = newBpm;
-      const bpmInputEl = document.getElementById('bpm') as HTMLInputElement;
-      if (bpmInputEl) bpmInputEl.value = String(newBpm);
-      updateLevelDisplay();
-    } else {
+  // File upload handlers (both in control bar and options panel)
+  const xmlUpload = document.getElementById('xmlUpload') as HTMLInputElement;
+  const xmlUploadOptions = document.getElementById('xmlUploadOptions') as HTMLInputElement;
+
+  const handleUpload = (e: Event) => {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (file) {
       if (isPlaying) stop();
-      incrementLevel();
-      generateAndRender();
-      updateLevelDisplay();
+      handleFileUpload(file);
+      // Clear the input so the same file can be uploaded again
+      input.value = '';
+    }
+  };
+
+  xmlUpload?.addEventListener('change', handleUpload);
+  xmlUploadOptions?.addEventListener('change', handleUpload);
+
+  // Exit practice mode button
+  const exitPracticeModeBtn = document.getElementById('exitPracticeMode');
+  exitPracticeModeBtn?.addEventListener('click', () => {
+    if (isPlaying) stop();
+    exitPracticeMode();
+  });
+
+  levelUpBtn?.addEventListener('click', () => {
+    if (currentMode === 'practice' && practiceSession) {
+      // Practice mode: advance to next step
+      if (isPlaying) stop();
+      if (practiceSession.nextStep()) {
+        renderPracticeStep();
+      }
+    } else {
+      // Level mode: If tempo mastery achieved, increase tempo instead of level
+      if (shouldIncreaseTempo()) {
+        increaseTempo();
+        const newBpm = getCurrentBpm();
+        bpm = newBpm;
+        const bpmInputEl = document.getElementById('bpm') as HTMLInputElement;
+        if (bpmInputEl) bpmInputEl.value = String(newBpm);
+        updateLevelDisplay();
+      } else {
+        if (isPlaying) stop();
+        incrementLevel();
+        generateAndRender();
+        updateLevelDisplay();
+      }
     }
   });
 
   levelDownBtn?.addEventListener('click', () => {
-    const current = getLevel();
-    if (current > 1) {
+    if (currentMode === 'practice' && practiceSession) {
+      // Practice mode: go to previous step
       if (isPlaying) stop();
-      setLevel(current - 1);
-      generateAndRender();
-      updateLevelDisplay();
+      if (practiceSession.previousStep()) {
+        renderPracticeStep();
+      }
+    } else {
+      // Level mode
+      const current = getLevel();
+      if (current > 1) {
+        if (isPlaying) stop();
+        setLevel(current - 1);
+        generateAndRender();
+        updateLevelDisplay();
+      }
     }
   });
 
@@ -930,8 +905,6 @@ async function start() {
 
   currentBeatIndex = 0;
   hadMistake = false;
-
-  groupNotesByPosition();
 
   // Fully reset Tone.js Transport before scheduling
   const transport = Tone.getTransport();
@@ -1018,6 +991,17 @@ function scheduleMusic(countoffTotal: number) {
   scheduledEvents.push(endEventId);
 }
 
+/**
+ * Reset visual highlighting on notes (clear current/past/correct/wrong classes).
+ */
+function resetVisualHighlighting() {
+  const notation = document.getElementById('notation')!;
+  notation.querySelectorAll('.note, .rest').forEach((el) => {
+    el.classList.remove('current', 'past', 'correct', 'wrong');
+    el.removeAttribute('data-early-correct');
+  });
+}
+
 function onPieceComplete() {
   if (!isPlaying) return;
 
@@ -1028,36 +1012,61 @@ function onPieceComplete() {
     el.classList.add('past');
   });
 
-  // Advance level if no mistakes
-  if (!hadMistake) {
-    incrementLevel();
+  // Handle differently based on mode
+  if (currentMode === 'practice') {
+    // Practice mode: always loop the current step
+    // User can use level up/down buttons to advance manually
+    hadMistake = false;
+    currentBeatIndex = 0;
+
+    // Reset visual highlighting (same music, just loop)
+    resetVisualHighlighting();
+
+    // Reset transport and replay WITHOUT countoff
+    Tone.getTransport().stop();
+    Tone.getTransport().cancel();
+    scheduledEvents = [];
+    Tone.getTransport().seconds = 0;
+    lastMetronomeTime = 0;
+    lastAdvanceBeatTime = 0;
+
+    // No countoff on loop - start music immediately
+    isCountingOff = false;
+    countoffBeats = 0;
+    scheduleMusic(0); // 0 = no countoff
+    Tone.getTransport().start();
+  } else {
+    // Level mode: advance level if no mistakes
+    if (!hadMistake) {
+      incrementLevel();
+    }
+
+    // Reset tracking for next round
+    hadMistake = false;
+    currentBeatIndex = 0;
+
+    // Generate new piece
+    generateAndRender();
+
+    // Fully reset Tone.js Transport before scheduling new piece
+    Tone.getTransport().stop();
+    Tone.getTransport().cancel();
+    scheduledEvents = [];
+    // Use seconds property for more reliable reset
+    Tone.getTransport().seconds = 0;
+
+    // Reset debounce timers to allow first events of new piece
+    lastMetronomeTime = 0;
+    lastAdvanceBeatTime = 0;
+
+    isCountingOff = true;
+    countoffBeats = 0;
+    const countoffTotal = currentTimeSig.beats;
+    // Don't show initial number - it will appear on first beat
+
+    scheduleMusic(countoffTotal);
+    Tone.getTransport().start();
   }
-
-  // Reset tracking for next round
-  hadMistake = false;
-  currentBeatIndex = 0;
-
-  // Generate new piece
-  generateAndRender();
-
-  // Fully reset Tone.js Transport before scheduling new piece
-  Tone.getTransport().stop();
-  Tone.getTransport().cancel();
-  scheduledEvents = [];
-  // Use seconds property for more reliable reset
-  Tone.getTransport().seconds = 0;
-
-  // Reset debounce timers to allow first events of new piece
-  lastMetronomeTime = 0;
-  lastAdvanceBeatTime = 0;
-
-  isCountingOff = true;
-  countoffBeats = 0;
-  const countoffTotal = currentTimeSig.beats;
-  // Don't show initial number - it will appear on first beat
-
-  scheduleMusic(countoffTotal);
-  Tone.getTransport().start();
 }
 
 function updateCountoffDisplay(remaining: number) {
@@ -1113,50 +1122,265 @@ function advanceBeat() {
     el.classList.add('past');
   });
 
-  if (currentBeatIndex >= visualGroups.length) {
+  if (currentBeatIndex >= timingEvents.length) {
     return; // onPieceComplete handles the end
   }
 
-  const currentGroup = visualGroups[currentBeatIndex];
+  const timingEvent = timingEvents[currentBeatIndex];
 
-  currentGroup.elements.forEach((el) => {
-    el.classList.add('current');
+  // Use Verovio's getElementsAtTime to find which notes to highlight
+  // Verovio defaults to 120 BPM when no tempo is specified in MusicXML
+  // At 120 BPM: 1 quarter note = 500ms
+  const VEROVIO_MS_PER_BEAT = 500;
+  const timeInMs = timingEvent.time * VEROVIO_MS_PER_BEAT;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const elementsAtTime = (toolkit as any).getElementsAtTime(timeInMs) as { notes?: string[]; page?: number } | undefined;
 
-    // Check if this note was played early
-    if (el.getAttribute('data-early-correct') === 'true') {
-      el.classList.add('correct');
-      el.removeAttribute('data-early-correct');
-    }
+  // Highlight notes returned by Verovio
+  if (elementsAtTime && elementsAtTime.notes) {
+    for (const noteId of elementsAtTime.notes) {
+      const noteEl = document.getElementById(noteId);
+      if (noteEl) {
+        noteEl.classList.add('current');
 
-    if (el.classList.contains('note')) {
-      const pitch = extractPitchFromNote(el);
-      if (pitch && sampler && sampler.loaded) {
-        // Use longer duration for sustain
-        sampler.triggerAttackRelease(pitch, '2n');
+        // Check if this note was played early
+        if (noteEl.getAttribute('data-early-correct') === 'true') {
+          noteEl.classList.add('correct');
+          noteEl.removeAttribute('data-early-correct');
+        }
       }
     }
-  });
+  }
+
+  // Play pitches from source data (timingEvents), NOT from Verovio SVG
+  const pitchesPlayed = timingEvent?.pitches ?? [];
+
+  if (sampler && sampler.loaded && pitchesPlayed.length > 0) {
+    for (const pitch of pitchesPlayed) {
+      sampler.triggerAttackRelease(pitch, '2n');
+    }
+  }
+
+  // Debug: log what we're playing
+  const noteIds = elementsAtTime?.notes?.join(', ') ?? 'none';
+  console.log(`Beat ${currentBeatIndex}: playing [${pitchesPlayed.join(', ')}] | time: ${timingEvent.time.toFixed(2)} | Verovio notes: [${noteIds}]`);
 
   currentBeatIndex++;
 }
 
-function extractPitchFromNote(noteEl: SVGElement): string | null {
-  const id = noteEl.getAttribute('id');
-  if (id && toolkit) {
-    try {
-      const elemData = toolkit.getElementAttr(id);
-      if (elemData && elemData.pname && elemData.oct) {
-        let noteName = (elemData.pname as string).toUpperCase();
-        if (elemData.accid === 's') noteName += '#';
-        if (elemData.accid === 'f') noteName += 'b';
-        return `${noteName}${elemData.oct}`;
-      }
-    } catch {
-      // Fallback
-    }
-  }
-  return 'C4';
+/**
+ * Convert NoteData to Tone.js pitch string (e.g., 'C4', 'F#5', 'Bb3')
+ */
+function noteDataToPitch(note: NoteData): string | null {
+  if (note.isRest) return null;
+
+  let pitchName = note.step;
+  if (note.alter === 1) pitchName += '#';
+  else if (note.alter === -1) pitchName += 'b';
+
+  return `${pitchName}${note.octave}`;
 }
+
+// ============================================
+// PRACTICE MODE (UPLOADED FILES)
+// ============================================
+
+/**
+ * Handle file upload and enter practice mode.
+ */
+async function handleFileUpload(file: File) {
+  try {
+    const xmlString = await file.text();
+    const parsed = parseMusicXML(xmlString);
+
+    // Debug: log parsed structure
+    console.log('Parsed MusicXML:', {
+      title: parsed.title,
+      measureCount: parsed.measures.length,
+      timeSignature: parsed.timeSignature,
+      keySignature: parsed.keySignature,
+      measures: parsed.measures.map((m) => ({
+        number: m.number,
+        rhNotes: m.rightHand.length,
+        lhNotes: m.leftHand.length
+      })).slice(0, 5) // Just first 5 measures for brevity
+    });
+
+    if (parsed.measures.length === 0) {
+      alert('No measures found in the uploaded file.');
+      return;
+    }
+
+    // Create practice session
+    practiceSession = new ProgressivePracticeSession(parsed);
+    currentMode = 'practice';
+
+    // Update BPM to something reasonable for practice
+    bpm = 60;
+    const bpmInput = document.getElementById('bpm') as HTMLInputElement;
+    if (bpmInput) bpmInput.value = '60';
+
+    // Update UI for practice mode
+    enterPracticeMode();
+
+    // Render first step
+    renderPracticeStep();
+  } catch (error) {
+    console.error('Error parsing MusicXML:', error);
+    alert('Error parsing file. Please ensure it is a valid MusicXML file.');
+  }
+}
+
+/**
+ * Enter practice mode UI.
+ */
+function enterPracticeMode() {
+  if (!practiceSession) return;
+
+  // Update header
+  const scoreTitle = document.querySelector('.score-title h1');
+  if (scoreTitle) {
+    scoreTitle.textContent = practiceSession.getTitle();
+  }
+
+  // Show practice info bar
+  const practiceInfo = document.getElementById('practiceInfo');
+  if (practiceInfo) practiceInfo.hidden = false;
+
+  // Hide level-specific UI
+  const levelDisplay = document.getElementById('levelDisplay');
+  const progressInfo = document.getElementById('progressInfo');
+  const lessonInfo = document.getElementById('lessonInfo');
+  if (levelDisplay) levelDisplay.style.display = 'none';
+  if (progressInfo) progressInfo.style.display = 'none';
+  if (lessonInfo) lessonInfo.textContent = practiceSession.getKeySignature().name;
+
+  // Hide level controls in control bar
+  const levelSection = document.querySelector('.control-section.level');
+  if (levelSection) (levelSection as HTMLElement).style.display = 'none';
+
+  // Show exit button in options
+  const exitBtn = document.getElementById('exitPracticeMode');
+  if (exitBtn) exitBtn.hidden = false;
+
+  // Update practice info display
+  updatePracticeDisplay();
+}
+
+/**
+ * Exit practice mode and return to levels.
+ */
+function exitPracticeMode() {
+  currentMode = 'levels';
+  practiceSession = null;
+
+  // Restore header
+  const scoreTitle = document.querySelector('.score-title h1');
+  if (scoreTitle) {
+    scoreTitle.textContent = 'Sight Reading';
+  }
+
+  // Hide practice info bar
+  const practiceInfo = document.getElementById('practiceInfo');
+  if (practiceInfo) practiceInfo.hidden = true;
+
+  // Show level-specific UI
+  const levelDisplay = document.getElementById('levelDisplay');
+  const progressInfo = document.getElementById('progressInfo');
+  if (levelDisplay) levelDisplay.style.display = '';
+  if (progressInfo) progressInfo.style.display = '';
+
+  // Show level controls
+  const levelSection = document.querySelector('.control-section.level');
+  if (levelSection) (levelSection as HTMLElement).style.display = '';
+
+  // Hide exit button
+  const exitBtn = document.getElementById('exitPracticeMode');
+  if (exitBtn) exitBtn.hidden = true;
+
+  // Generate fresh level content
+  generateAndRender();
+}
+
+/**
+ * Update the practice mode display (step info, progress bar).
+ */
+function updatePracticeDisplay() {
+  if (!practiceSession) return;
+
+  const segment = practiceSession.getCurrentSegment();
+  const progress = practiceSession.getProgress();
+
+  // Step type
+  const stepTypeEl = document.getElementById('practiceStepType');
+  if (stepTypeEl) {
+    stepTypeEl.textContent = getStepTypeLabel(segment.stepType);
+    stepTypeEl.className = `step-type step-type-${segment.stepType}`;
+  }
+
+  // Step description
+  const stepDescEl = document.getElementById('practiceStepDesc');
+  if (stepDescEl) {
+    stepDescEl.textContent = segment.description;
+  }
+
+  // Step number
+  const stepNumEl = document.getElementById('practiceStepNum');
+  if (stepNumEl) {
+    stepNumEl.textContent = `Step ${progress.currentStep} of ${progress.totalSteps}`;
+  }
+
+  // Progress bar
+  const progressBar = document.getElementById('practiceProgressBar');
+  if (progressBar) {
+    progressBar.style.width = `${progress.percent}%`;
+  }
+}
+
+/**
+ * Render the current practice step.
+ */
+function renderPracticeStep() {
+  if (!practiceSession) return;
+
+  const segment = practiceSession.getCurrentSegment();
+  const timeSig = practiceSession.getTimeSignature();
+  const keySig = practiceSession.getKeySignature();
+
+  // Update current notes
+  currentRightHandNotes = segment.rightHand;
+  currentLeftHandNotes = segment.leftHand;
+  currentTimeSig = timeSig;
+
+  // Debug: log parsed notes
+  console.log('Practice step notes:', {
+    rightHand: segment.rightHand.map(n => ({
+      note: n.isRest ? 'REST' : `${n.step}${n.alter ? (n.alter > 0 ? '#' : 'b') : ''}${n.octave}`,
+      duration: n.duration
+    })),
+    leftHand: segment.leftHand.map(n => ({
+      note: n.isRest ? 'REST' : `${n.step}${n.alter ? (n.alter > 0 ? '#' : 'b') : ''}${n.octave}`,
+      duration: n.duration
+    })),
+    timeSig,
+    keySig: keySig.name
+  });
+
+  // Build MusicXML for this segment
+  currentPieceXml = buildMusicXML(
+    segment.rightHand,
+    segment.leftHand,
+    {
+      timeSignature: timeSig,
+      key: keySig,
+    }
+  );
+
+  // Render
+  renderCurrentMusic();
+  updatePracticeDisplay();
+}
+
 
 // Start the app
 init().catch(console.error);

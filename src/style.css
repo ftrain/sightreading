@@ -493,6 +493,144 @@ body {
   height: 20px;
 }
 
+/* Upload Button */
+.upload-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.upload-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.upload-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ============================================
+   PRACTICE MODE INFO BAR
+   ============================================ */
+.practice-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1100px;
+  margin: 0 auto var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  background: rgba(139, 115, 85, 0.15);
+  border: 1px solid rgba(139, 115, 85, 0.25);
+  border-radius: 8px;
+}
+
+.practice-info[hidden] {
+  display: none;
+}
+
+.practice-step {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.step-type {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent-light);
+}
+
+.step-desc {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.practice-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.step-num {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.progress-bar {
+  width: 120px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width var(--transition-med);
+}
+
+/* Exit Practice Mode Button */
+.exit-practice-btn {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  margin-top: var(--space-sm);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.exit-practice-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.exit-practice-btn[hidden] {
+  display: none;
+}
+
+/* File Upload in Options */
+.file-upload-label {
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+}
+
+.file-upload-label span:first-child {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.upload-hint {
+  font-size: 0.7rem;
+  color: var(--text-subtle);
+}
+
+.options-group input[type='file'] {
+  display: none;
+}
+
 /* ============================================
    OPTIONS PANEL
    ============================================ */
@@ -796,6 +934,15 @@ body.is-playing #controlBar:hover {
   .midi-options {
     display: none;
   }
+
+  .practice-info {
+    flex-direction: row;
+    gap: var(--space-sm);
+  }
+
+  .progress-bar {
+    width: 80px;
+  }
 }
 
 /* ============================================
@@ -860,6 +1007,26 @@ body.is-playing #controlBar:hover {
 
   .midi-options {
     display: none;
+  }
+
+  .practice-info {
+    padding: var(--space-xs) var(--space-sm);
+  }
+
+  .step-type {
+    font-size: 0.6rem;
+  }
+
+  .step-desc {
+    font-size: 0.875rem;
+  }
+
+  .step-num {
+    font-size: 0.65rem;
+  }
+
+  .progress-bar {
+    width: 60px;
   }
 }
 

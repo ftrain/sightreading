@@ -28,6 +28,20 @@
           </div>
         </div>
 
+        <!-- Practice Mode Info Bar (shown when practicing uploaded file) -->
+        <div id="practiceInfo" class="practice-info" hidden>
+          <div class="practice-step">
+            <span id="practiceStepType" class="step-type">Learning</span>
+            <span id="practiceStepDesc" class="step-desc">Measure 1</span>
+          </div>
+          <div class="practice-progress">
+            <span id="practiceStepNum" class="step-num">Step 1 of 24</span>
+            <div class="progress-bar">
+              <div id="practiceProgressBar" class="progress-fill" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+
         <div id="scoreContainer">
           <div id="countoff" aria-live="polite" aria-atomic="true"></div>
           <div id="notation" role="img" aria-label="Music notation for sight reading practice"></div>
@@ -79,6 +93,16 @@
               <circle cx="12" cy="14" r="1.5" fill="currentColor"/>
             </svg>
           </button>
+        </div>
+
+        <div class="control-section upload">
+          <label class="upload-btn" for="xmlUpload" aria-label="Upload MusicXML file">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 15V3m0 0l-4 4m4-4l4 4" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </label>
+          <input type="file" id="xmlUpload" accept=".xml,.musicxml,.mxl" hidden />
         </div>
 
         <div class="control-section options">
@@ -157,6 +181,20 @@
             <span>Show Fingering</span>
             <input type="checkbox" id="showFingering" />
           </label>
+        </div>
+
+        <div class="options-group">
+          <h3>Practice Your Own Music</h3>
+          <div class="option-row">
+            <label class="file-upload-label" for="xmlUploadOptions">
+              <span>Upload MusicXML</span>
+              <span class="upload-hint">.xml, .musicxml</span>
+            </label>
+            <input type="file" id="xmlUploadOptions" accept=".xml,.musicxml" />
+          </div>
+          <button id="exitPracticeMode" class="exit-practice-btn" hidden>
+            Return to Levels
+          </button>
         </div>
 
         <div class="options-group midi-options">
