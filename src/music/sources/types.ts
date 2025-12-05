@@ -66,8 +66,26 @@ export interface MusicSource {
  */
 export type MusicSourceType =
   | 'procedural'    // Randomly generated
-  | 'imported'      // From MusicXML/MIDI file
+  | 'mxl-import'    // From compressed MusicXML (.mxl)
+  | 'midi-import'   // From MIDI file (.mid)
+  | 'xml-import'    // From plain MusicXML (.xml/.musicxml)
   | 'predefined';   // Curated/hardcoded
+
+/**
+ * Result type for import operations
+ */
+export type ImportResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: ImportError };
+
+/**
+ * Import error information
+ */
+export interface ImportError {
+  code: 'INVALID_FORMAT' | 'PARSE_ERROR' | 'EMPTY_FILE' | 'UNSUPPORTED';
+  message: string;
+  cause?: unknown;
+}
 
 /**
  * Configuration for procedural music generation
