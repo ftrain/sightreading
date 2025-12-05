@@ -101,7 +101,7 @@ The timing system uses the music generator as the single source of truth:
 
 ## Gotchas
 
-- Verovio options must include `staffLabelMode: 'none'` to hide "Piano" label
+- MusicXML uses `<part-name print-object="no">` to hide "Piano" label
 - Countoff shows 4-3-2-1 on each beat (not before first beat)
 - Level progress is saved to localStorage
 - `visualGroups` is for SVG highlighting only, not timing

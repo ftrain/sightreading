@@ -172,8 +172,6 @@ function updateVerovioOptions() {
     footer: 'none',
     header: 'none',
     breaks: 'none', // Let Verovio fit all 4 measures on one line
-    // Hide staff labels ("Piano") and bracket
-    staffLabelMode: 'none',
     // Spacing for eighth notes
     spacingNonLinear: 0.55,
     spacingLinear: 0.3,
@@ -277,7 +275,6 @@ function playMetronomeClick(subdivisionInBeat: number) {
   }
 
   synth.volume.value = volume;
-  // Use immediate timing to avoid "start time" errors
   synth.triggerAttackRelease(pitch, '32n');
 
   // Dispose after playing
@@ -338,32 +335,39 @@ function buildTimingEvents() {
   timingEvents = [];
 
   // Merge right and left hand notes by time position
-  const allEvents: Map<number, number> = new Map(); // time -> shortest duration at that time
+  // Use string keys to avoid floating point precision issues
+  const allEvents: Map<string, number> = new Map(); // time (rounded) -> shortest duration at that time
+
+  // Round time to avoid floating point precision issues (e.g., 7.0 vs 7.000000000000001)
+  const roundTime = (t: number) => Math.round(t * 1000) / 1000;
 
   let currentTime = 0;
   for (const note of currentRightHandNotes) {
-    const existing = allEvents.get(currentTime);
+    const timeKey = String(roundTime(currentTime));
+    const existing = allEvents.get(timeKey);
     if (existing === undefined || note.duration < existing) {
-      allEvents.set(currentTime, note.duration);
+      allEvents.set(timeKey, note.duration);
     }
     currentTime += note.duration;
   }
 
   currentTime = 0;
   for (const note of currentLeftHandNotes) {
-    const existing = allEvents.get(currentTime);
+    const timeKey = String(roundTime(currentTime));
+    const existing = allEvents.get(timeKey);
     if (existing === undefined || note.duration < existing) {
-      allEvents.set(currentTime, note.duration);
+      allEvents.set(timeKey, note.duration);
     }
     currentTime += note.duration;
   }
 
   // Convert to sorted array
-  const sortedTimes = Array.from(allEvents.keys()).sort((a, b) => a - b);
+  const sortedTimes = Array.from(allEvents.keys()).map(Number).sort((a, b) => a - b);
 
   for (let i = 0; i < sortedTimes.length; i++) {
     const time = sortedTimes[i];
-    const nextTime = i < sortedTimes.length - 1 ? sortedTimes[i + 1] : time + allEvents.get(time)!;
+    const timeKey = String(time);
+    const nextTime = i < sortedTimes.length - 1 ? sortedTimes[i + 1] : time + allEvents.get(timeKey)!;
     // Duration is time until next event (or the note's own duration if last)
     const duration = nextTime - time;
     timingEvents.push({ time, duration });
@@ -1000,11 +1004,7 @@ function scheduleMusic(countoffTotal: number) {
     const timeInSeconds = beatsToSeconds(timeInBeats, bpm);
 
     // Schedule the note/rest to become current
-    const beatIdx = i;
-    const expectedTime = timeInSeconds;
     const noteEventId = Tone.getTransport().schedule(() => {
-      // Log for testing/debugging (used by Playwright tests)
-      console.log(`  -> Note ${beatIdx} fired: transport=${Tone.getTransport().seconds.toFixed(3)}s (expected=${expectedTime.toFixed(3)}s)`);
       advanceBeat();
     }, timeInSeconds);
     scheduledEvents.push(noteEventId);

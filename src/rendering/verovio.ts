@@ -47,7 +47,6 @@ const DEFAULT_OPTIONS: Partial<VerovioOptions> = {
   footer: 'none',
   header: 'none',
   breaks: 'none',
-  staffLabelMode: 'none',
   spacingNonLinear: 0.55,
   spacingLinear: 0.3,
   spacingStaff: 6,
