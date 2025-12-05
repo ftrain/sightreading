@@ -21,7 +21,8 @@ import {
   setIncludeFingering,
   setKeyOverride,
 } from './musicGenerator';
-import type { NoteData } from './musicGenerator';
+import type { NoteData, TimingEvent } from './core/types';
+import { midiToNoteName, normalizeNoteName } from './core/noteUtils';
 import {
   shouldAllowMetronomeClick,
   beatsToSeconds,
@@ -41,10 +42,7 @@ interface VisualGroup {
 let visualGroups: VisualGroup[] = [];
 
 // Timing data from music generator (source of truth for durations and playback)
-interface TimingEvent {
-  time: number; // Start time in beats
-  duration: number; // Duration in beats
-}
+// TimingEvent imported from core/types
 let timingEvents: TimingEvent[] = [];
 
 // Current time signature
@@ -608,36 +606,16 @@ function updateMidiDevices(midiAccess: MIDIAccess) {
   }
 }
 
-function midiNoteToName(noteNum: number): string {
-  const notes = [
-    'C',
-    'C#',
-    'D',
-    'D#',
-    'E',
-    'F',
-    'F#',
-    'G',
-    'G#',
-    'A',
-    'A#',
-    'B',
-  ];
-  const octave = Math.floor(noteNum / 12) - 1;
-  const note = notes[noteNum % 12];
-  return `${note}${octave}`;
-}
-
 function handleMIDIMessage(event: MIDIMessageEvent) {
   const [status, noteNum, velocity] = event.data!;
   const command = status & 0xf0;
 
   if (command === 0x90 && velocity > 0) {
-    const noteName = midiNoteToName(noteNum);
+    const noteName = midiToNoteName(noteNum);
     activeNotes.add(noteName);
     checkNoteMatch(noteName);
   } else if (command === 0x80 || (command === 0x90 && velocity === 0)) {
-    const noteName = midiNoteToName(noteNum);
+    const noteName = midiToNoteName(noteNum);
     activeNotes.delete(noteName);
   }
 }
@@ -646,7 +624,7 @@ function checkNoteMatch(playedNote: string) {
   if (!isPlaying || isCountingOff) return;
 
   const notation = document.getElementById('notation')!;
-  const normalizedPlayed = normalizeNote(playedNote);
+  const normalizedPlayed = normalizeNoteName(playedNote);
 
   // Check current notes
   const currentElements = notation.querySelectorAll('.note.current');
@@ -654,7 +632,7 @@ function checkNoteMatch(playedNote: string) {
 
   currentElements.forEach((el) => {
     const noteData = getNoteDataFromElement(el as SVGElement);
-    if (noteData && normalizeNote(noteData) === normalizedPlayed) {
+    if (noteData && normalizeNoteName(noteData) === normalizedPlayed) {
       el.classList.add('correct');
       el.classList.remove('wrong');
       matchedAny = true;
@@ -668,7 +646,7 @@ function checkNoteMatch(playedNote: string) {
     for (const el of upcomingGroup.elements) {
       if (el.classList.contains('note')) {
         const noteData = getNoteDataFromElement(el);
-        if (noteData && normalizeNote(noteData) === normalizedPlayed) {
+        if (noteData && normalizeNoteName(noteData) === normalizedPlayed) {
           // Mark as correct early - it will show when the note becomes current
           el.setAttribute('data-early-correct', 'true');
           matchedAny = true;
@@ -685,17 +663,6 @@ function checkNoteMatch(playedNote: string) {
       }
     });
   }
-}
-
-function normalizeNote(note: string): string {
-  return note
-    .replace('Db', 'C#')
-    .replace('Eb', 'D#')
-    .replace('Fb', 'E')
-    .replace('Gb', 'F#')
-    .replace('Ab', 'G#')
-    .replace('Bb', 'A#')
-    .replace('Cb', 'B');
 }
 
 function getNoteDataFromElement(el: SVGElement): string | null {
@@ -1129,7 +1096,7 @@ function advanceBeat() {
     }
 
     if (el.classList.contains('note')) {
-      const pitch = extractPitchFromNote(el);
+      const pitch = getNoteDataFromElement(el) ?? 'C4';
       if (pitch && sampler && sampler.loaded) {
         // Use longer duration for sustain
         sampler.triggerAttackRelease(pitch, '2n');
@@ -1138,24 +1105,6 @@ function advanceBeat() {
   });
 
   currentBeatIndex++;
-}
-
-function extractPitchFromNote(noteEl: SVGElement): string | null {
-  const id = noteEl.getAttribute('id');
-  if (id && toolkit) {
-    try {
-      const elemData = toolkit.getElementAttr(id);
-      if (elemData && elemData.pname && elemData.oct) {
-        let noteName = (elemData.pname as string).toUpperCase();
-        if (elemData.accid === 's') noteName += '#';
-        if (elemData.accid === 'f') noteName += 'b';
-        return `${noteName}${elemData.oct}`;
-      }
-    } catch {
-      // Fallback
-    }
-  }
-  return 'C4';
 }
 
 // Start the app

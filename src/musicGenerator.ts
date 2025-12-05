@@ -10,7 +10,8 @@
 // - NEW KEYS RESET TO BASICS - introduce key with whole notes first
 // - TEMPO is separate from note complexity - master slow before fast
 
-import { generateFingering, type Finger } from './fingeringEngine';
+import { generateFingering } from './fingeringEngine';
+import type { Finger } from './core/types';
 
 // Global setting for whether to include fingering in notation
 let includeFingering = false;

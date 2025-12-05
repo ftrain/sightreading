@@ -15,24 +15,7 @@
 // 4. Left hand mirrors right hand (inverted)
 
 import { Note } from 'tonal';
-
-// Finger numbers: 1=thumb, 2=index, 3=middle, 4=ring, 5=pinky
-export type Finger = 1 | 2 | 3 | 4 | 5;
-export type Hand = 'left' | 'right';
-
-export interface FingeringResult {
-  finger: Finger;
-  hand: Hand;
-  note: string;
-  midiNote: number;
-}
-
-export interface FingeringSuggestion {
-  notes: FingeringResult[];
-  difficulty: number;
-  tips: string[];
-  position?: string;
-}
+import type { Finger, Hand, FingeringResult, FingeringSuggestion } from './core/types';
 
 // ============================================
 // CORE FINGERING LOGIC
