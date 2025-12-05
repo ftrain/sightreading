@@ -74,6 +74,7 @@ let selectedMidiInput: string | null = localStorage.getItem('midiDeviceId');
 let bpm = 30;
 let metronomeEnabled = true;
 let metronomeVolume = -20; // dB base for metronome (quieter default)
+let autoTempoRamp = false;
 
 // Store the current piece's XML
 let currentPieceXml: string = '';
@@ -819,6 +820,14 @@ function setupControls() {
     }
   });
 
+  // Auto tempo ramp checkbox
+  const autoTempoRampCheckbox = document.getElementById('autoTempoRamp') as HTMLInputElement;
+  if (autoTempoRampCheckbox) {
+    autoTempoRampCheckbox.addEventListener('change', () => {
+      autoTempoRamp = autoTempoRampCheckbox.checked;
+    });
+  }
+
   levelUpBtn?.addEventListener('click', () => {
     // If tempo mastery achieved, increase tempo instead of level
     if (shouldIncreaseTempo()) {
@@ -1087,6 +1096,14 @@ function onPieceComplete() {
   // Advance level if no mistakes
   if (mistakeCount === 0) {
     incrementLevel();
+    // Auto tempo ramp: increase by 5 BPM on success
+    if (autoTempoRamp && bpm < 180) {
+      bpm += 5;
+      setBpm(bpm);
+      const bpmInput = document.getElementById('bpm') as HTMLInputElement;
+      if (bpmInput) bpmInput.value = String(bpm);
+      Tone.getTransport().bpm.value = bpm;
+    }
   }
 
   // Reset tracking for next round
