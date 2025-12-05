@@ -2,6 +2,28 @@
 
 This file provides guidance for Claude Code when working on this project.
 
+## Dataflow Enforcement Agent
+
+**IMPORTANT**: Before writing any code, consult `docs/DATAFLOW_ENFORCEMENT.md`. This document defines:
+- Strict dataflow patterns (timing source of truth, event-driven communication)
+- Library requirements (use installed libraries, don't reinvent)
+- Type safety rules (no `any`, discriminated unions, Result types)
+- Forbidden patterns (global mutable state, DOM in non-UI modules)
+
+**Quick Rules**:
+1. All types import from `core/types.ts` - never duplicate locally
+2. All note utilities import from `core/noteUtils.ts`
+3. Timing comes from `NoteData[]`, NEVER from SVG/DOM
+4. Cross-module communication via `EventEmitter` only
+5. Use libraries: Tone.js (audio), Verovio (rendering), Tonal (theory), @tonejs/midi (MIDI files)
+
+## Additional Documentation
+
+- `docs/ARCHITECTURE.md` - Module overview and design principles
+- `docs/DATAFLOW_ENFORCEMENT.md` - **Required reading before coding**
+- `docs/REFACTORING_PLAN.md` - Technical debt and improvement roadmap
+- `docs/MODULES_GUIDE.md` - How to reuse modules for different applications
+
 ## Project Overview
 
 Sight Reading Practice is a web app for learning to read piano sheet music. It generates procedural exercises with a structured curriculum and provides real-time feedback via MIDI input.
