@@ -127,37 +127,17 @@ async function init() {
   // Setup MIDI
   setupMIDI();
 
-  // Handle window resize - re-render existing music, don't generate new
-  window.addEventListener('resize', () => {
+  // Handle window resize and orientation change
+  const handleResize = () => {
     const wasMobile = isMobileMode();
     updateMobileMode();
     updateVerovioOptions();
     if (!isPlaying) {
-      // Only regenerate if mobile mode changed (different measure count)
-      // Otherwise just re-render the existing piece
-      if (wasMobile !== isMobileMode()) {
-        generateAndRender();
-      } else {
-        rerenderCurrentMusic();
-      }
+      wasMobile !== isMobileMode() ? generateAndRender() : rerenderCurrentMusic();
     }
-  });
-
-  // Handle orientation change on mobile
-  window.addEventListener('orientationchange', () => {
-    setTimeout(() => {
-      const wasMobile = isMobileMode();
-      updateMobileMode();
-      updateVerovioOptions();
-      if (!isPlaying) {
-        if (wasMobile !== isMobileMode()) {
-          generateAndRender();
-        } else {
-          rerenderCurrentMusic();
-        }
-      }
-    }, 100);
-  });
+  };
+  window.addEventListener('resize', handleResize);
+  window.addEventListener('orientationchange', () => setTimeout(handleResize, 100));
 }
 
 function updateVerovioOptions() {
@@ -205,43 +185,21 @@ function regenerateCurrentMusicXML() {
 
 async function initAudio() {
   if (sampler) return;
-
   await Tone.start();
 
+  // Generate sample URLs for all octaves (Salamander piano samples)
+  const urls: Record<string, string> = {};
+  for (let oct = 0; oct <= 7; oct++) {
+    urls[`A${oct}`] = `A${oct}.mp3`;
+    urls[`C${oct + 1}`] = `C${oct + 1}.mp3`;
+    urls[`D#${oct + 1}`] = `Ds${oct + 1}.mp3`;
+    urls[`F#${oct + 1}`] = `Fs${oct + 1}.mp3`;
+  }
+  urls['C8'] = 'C8.mp3';
+
   sampler = new Tone.Sampler({
-    urls: {
-      A0: 'A0.mp3',
-      C1: 'C1.mp3',
-      'D#1': 'Ds1.mp3',
-      'F#1': 'Fs1.mp3',
-      A1: 'A1.mp3',
-      C2: 'C2.mp3',
-      'D#2': 'Ds2.mp3',
-      'F#2': 'Fs2.mp3',
-      A2: 'A2.mp3',
-      C3: 'C3.mp3',
-      'D#3': 'Ds3.mp3',
-      'F#3': 'Fs3.mp3',
-      A3: 'A3.mp3',
-      C4: 'C4.mp3',
-      'D#4': 'Ds4.mp3',
-      'F#4': 'Fs4.mp3',
-      A4: 'A4.mp3',
-      C5: 'C5.mp3',
-      'D#5': 'Ds5.mp3',
-      'F#5': 'Fs5.mp3',
-      A5: 'A5.mp3',
-      C6: 'C6.mp3',
-      'D#6': 'Ds6.mp3',
-      'F#6': 'Fs6.mp3',
-      A6: 'A6.mp3',
-      C7: 'C7.mp3',
-      'D#7': 'Ds7.mp3',
-      'F#7': 'Fs7.mp3',
-      A7: 'A7.mp3',
-      C8: 'C8.mp3',
-    },
-    release: 2, // Longer release for sustain
+    urls,
+    release: 2,
     baseUrl: 'https://tonejs.github.io/audio/salamander/',
   }).toDestination();
 
