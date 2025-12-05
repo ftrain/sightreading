@@ -201,13 +201,30 @@ async function initAudio() {
   }
   urls['C8'] = 'C8.mp3';
 
+  // Use local samples if available, fallback to CDN
+  // Run scripts/download-samples.sh to cache locally
+  const localPath = import.meta.env.BASE_URL + 'samples/';
+  const cdnPath = 'https://tonejs.github.io/audio/salamander/';
+
+  // Try local first, fallback to CDN
+  const baseUrl = await checkSamplesExist(localPath) ? localPath : cdnPath;
+
   sampler = new Tone.Sampler({
     urls,
     release: 2,
-    baseUrl: 'https://tonejs.github.io/audio/salamander/',
+    baseUrl,
   }).toDestination();
 
   await Tone.loaded();
+}
+
+async function checkSamplesExist(path: string): Promise<boolean> {
+  try {
+    const res = await fetch(path + 'A4.mp3', { method: 'HEAD' });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 function playMetronomeClick(subdivisionInBeat: number) {
