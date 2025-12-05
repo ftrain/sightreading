@@ -21,12 +21,15 @@ export type { NoteData } from './core/types';
 // Settings
 let includeFingering = false;
 let keyOverride: string | null = null;
+let handModeOverride: 'right' | 'left' | 'both' | null = null;
 let mobileMode = false;
 
 export const setIncludeFingering = (v: boolean) => { includeFingering = v; };
 export const getIncludeFingering = () => includeFingering;
 export const setKeyOverride = (k: string | null) => { keyOverride = k; };
 export const getKeyOverride = () => keyOverride;
+export const setHandModeOverride = (m: 'right' | 'left' | 'both' | null) => { handModeOverride = m; };
+export const getHandModeOverride = () => handModeOverride;
 export const setMobileMode = (v: boolean) => { mobileMode = v; };
 export const isMobileMode = () => mobileMode;
 
@@ -369,14 +372,16 @@ export function generateMusicXML(): GeneratedMusic {
   const config = getLevelConfig(progress.level, progress.subLevel, keyOverride);
   const numMeasures = 4;
   const beatsPerMeasure = config.timeSignature.beatType === 8 ? config.timeSignature.beats / 2 : config.timeSignature.beats;
+  const handMode = handModeOverride ?? config.handMode;
 
   let rightHand: NoteData[][], leftHand: NoteData[][];
+  const restMeasure = () => [{ step: '', alter: 0, octave: 0, duration: beatsPerMeasure, isRest: true }];
 
-  if (config.handMode === 'right') {
+  if (handMode === 'right') {
     rightHand = generateMelody(config, beatsPerMeasure, numMeasures);
-    leftHand = Array(numMeasures).fill(null).map(() => [{ step: '', alter: 0, octave: 0, duration: beatsPerMeasure, isRest: true }]);
-  } else if (config.handMode === 'left') {
-    rightHand = Array(numMeasures).fill(null).map(() => [{ step: '', alter: 0, octave: 0, duration: beatsPerMeasure, isRest: true }]);
+    leftHand = Array(numMeasures).fill(null).map(restMeasure);
+  } else if (handMode === 'left') {
+    rightHand = Array(numMeasures).fill(null).map(restMeasure);
     leftHand = generateLeftHand(config, beatsPerMeasure, numMeasures);
   } else {
     rightHand = generateMelody(config, beatsPerMeasure, numMeasures);

@@ -21,6 +21,7 @@ import {
   getBpmMasteryRemaining,
   setIncludeFingering,
   setKeyOverride,
+  setHandModeOverride,
 } from './musicGenerator';
 import type { NoteData, TimingEvent, KeyInfo } from './core/types';
 import { midiToNoteName, normalizeNoteName } from './core/noteUtils';
@@ -759,6 +760,17 @@ function setupControls() {
       if (isPlaying) stop();
       const selectedKey = keySelect.value || null;
       setKeyOverride(selectedKey);
+      generateAndRender();
+    });
+  }
+
+  // Hand mode override selector
+  const handModeSelect = document.getElementById('handMode') as HTMLSelectElement;
+  if (handModeSelect) {
+    handModeSelect.addEventListener('change', () => {
+      if (isPlaying) stop();
+      const mode = handModeSelect.value as 'right' | 'left' | 'both' | '';
+      setHandModeOverride(mode || null);
       generateAndRender();
     });
   }
