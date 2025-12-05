@@ -82,14 +82,14 @@ describe('musicGenerator', () => {
       expect(getSubLevel()).toBe(0);
     });
 
-    it('should not advance past level 20', () => {
-      setLevel(20);
+    it('should not advance past level 23', () => {
+      setLevel(23);
       setSubLevel(3);
-      // Complete sub-level 3 at level 20
+      // Complete sub-level 3 at level 23
       for (let rep = 0; rep < 3; rep++) {
         incrementLevel();
       }
-      expect(getLevel()).toBe(20);
+      expect(getLevel()).toBe(23);
     });
 
     it('should reset progress correctly', () => {
