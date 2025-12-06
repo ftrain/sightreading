@@ -203,40 +203,44 @@ async function initAudio() {
   if (sampler) return;
   await Tone.start();
 
-  // Generate sample URLs for all octaves (Salamander piano samples)
-  const urls: Record<string, string> = {};
-  for (let oct = 0; oct <= 7; oct++) {
-    urls[`A${oct}`] = `A${oct}.mp3`;
-    urls[`C${oct + 1}`] = `C${oct + 1}.mp3`;
-    urls[`D#${oct + 1}`] = `Ds${oct + 1}.mp3`;
-    urls[`F#${oct + 1}`] = `Fs${oct + 1}.mp3`;
-  }
-  urls['C8'] = 'C8.mp3';
-
-  // Use local samples if available, fallback to CDN
-  // Run scripts/download-samples.sh to cache locally
-  const localPath = import.meta.env.BASE_URL + 'samples/';
-  const cdnPath = 'https://tonejs.github.io/audio/salamander/';
-
-  // Try local first, fallback to CDN
-  const baseUrl = await checkSamplesExist(localPath) ? localPath : cdnPath;
-
   sampler = new Tone.Sampler({
-    urls,
+    urls: {
+      A0: 'A0.mp3',
+      C1: 'C1.mp3',
+      'D#1': 'Ds1.mp3',
+      'F#1': 'Fs1.mp3',
+      A1: 'A1.mp3',
+      C2: 'C2.mp3',
+      'D#2': 'Ds2.mp3',
+      'F#2': 'Fs2.mp3',
+      A2: 'A2.mp3',
+      C3: 'C3.mp3',
+      'D#3': 'Ds3.mp3',
+      'F#3': 'Fs3.mp3',
+      A3: 'A3.mp3',
+      C4: 'C4.mp3',
+      'D#4': 'Ds4.mp3',
+      'F#4': 'Fs4.mp3',
+      A4: 'A4.mp3',
+      C5: 'C5.mp3',
+      'D#5': 'Ds5.mp3',
+      'F#5': 'Fs5.mp3',
+      A5: 'A5.mp3',
+      C6: 'C6.mp3',
+      'D#6': 'Ds6.mp3',
+      'F#6': 'Fs6.mp3',
+      A6: 'A6.mp3',
+      C7: 'C7.mp3',
+      'D#7': 'Ds7.mp3',
+      'F#7': 'Fs7.mp3',
+      A7: 'A7.mp3',
+      C8: 'C8.mp3',
+    },
     release: 2,
-    baseUrl,
+    baseUrl: 'https://tonejs.github.io/audio/salamander/',
   }).toDestination();
 
   await Tone.loaded();
-}
-
-async function checkSamplesExist(path: string): Promise<boolean> {
-  try {
-    const res = await fetch(path + 'A4.mp3', { method: 'HEAD' });
-    return res.ok;
-  } catch {
-    return false;
-  }
 }
 
 function playMetronomeClick(subdivisionInBeat: number) {
@@ -327,33 +331,60 @@ function renderCurrentMusic() {
 }
 
 // Build timing events from the generated note data
-// This is the source of truth for durations
+// This is the source of truth for durations AND pitches
 function buildTimingEvents() {
   timingEvents = [];
 
-  // Merge right and left hand notes by time position
-  // Use string keys to avoid floating point precision issues
-  const allEvents: Map<string, number> = new Map(); // time (rounded) -> shortest duration at that time
-
-  // Round time to avoid floating point precision issues (e.g., 7.0 vs 7.000000000000001)
+  // Round time to avoid floating point precision issues
   const roundTime = (t: number) => Math.round(t * 1000) / 1000;
 
+  interface EventData {
+    duration: number;
+    pitches: string[];
+  }
+  const allEvents: Map<string, EventData> = new Map();
+
+  // Helper to convert NoteData to pitch string
+  const noteDataToPitch = (note: NoteData): string | null => {
+    if (note.isRest) return null;
+    let pitchName = note.step;
+    if (note.alter === 1) pitchName += '#';
+    else if (note.alter === -1) pitchName += 'b';
+    return `${pitchName}${note.octave}`;
+  };
+
+  // Process right hand notes
   let currentTime = 0;
   for (const note of currentRightHandNotes) {
     const timeKey = String(roundTime(currentTime));
+    const pitch = noteDataToPitch(note);
     const existing = allEvents.get(timeKey);
-    if (existing === undefined || note.duration < existing) {
-      allEvents.set(timeKey, note.duration);
+    if (existing) {
+      if (pitch) existing.pitches.push(pitch);
+      if (note.duration < existing.duration) existing.duration = note.duration;
+    } else {
+      allEvents.set(timeKey, {
+        duration: note.duration,
+        pitches: pitch ? [pitch] : [],
+      });
     }
     currentTime += note.duration;
   }
 
+  // Process left hand notes
   currentTime = 0;
   for (const note of currentLeftHandNotes) {
     const timeKey = String(roundTime(currentTime));
+    const pitch = noteDataToPitch(note);
     const existing = allEvents.get(timeKey);
-    if (existing === undefined || note.duration < existing) {
-      allEvents.set(timeKey, note.duration);
+    if (existing) {
+      if (pitch) existing.pitches.push(pitch);
+      if (note.duration < existing.duration) existing.duration = note.duration;
+    } else {
+      allEvents.set(timeKey, {
+        duration: note.duration,
+        pitches: pitch ? [pitch] : [],
+      });
     }
     currentTime += note.duration;
   }
@@ -364,12 +395,11 @@ function buildTimingEvents() {
   for (let i = 0; i < sortedTimes.length; i++) {
     const time = sortedTimes[i];
     const timeKey = String(time);
-    const nextTime = i < sortedTimes.length - 1 ? sortedTimes[i + 1] : time + allEvents.get(timeKey)!;
-    // Duration is time until next event (or the note's own duration if last)
+    const eventData = allEvents.get(timeKey)!;
+    const nextTime = i < sortedTimes.length - 1 ? sortedTimes[i + 1] : time + eventData.duration;
     const duration = nextTime - time;
-    timingEvents.push({ time, duration });
+    timingEvents.push({ time, duration, pitches: eventData.pitches });
   }
-
 }
 
 function updateLevelDisplay() {
@@ -632,36 +662,77 @@ function checkNoteMatch(playedNote: string) {
   const notation = document.getElementById('notation')!;
   const normalizedPlayed = normalizeNoteName(playedNote);
 
-  // Check current notes
-  const currentElements = notation.querySelectorAll('.note.current');
-  let matchedAny = false;
+  // Get expected pitches from source data (not from Verovio)
+  // currentBeatIndex points to the NEXT beat, so current beat is currentBeatIndex - 1
+  const currentBeatIdx = currentBeatIndex - 1;
+  const currentTimingEvent = currentBeatIdx >= 0 ? timingEvents[currentBeatIdx] : null;
+  const expectedPitches = currentTimingEvent?.pitches ?? [];
 
-  currentElements.forEach((el) => {
-    const noteData = getNoteDataFromElement(el as SVGElement);
-    if (noteData && normalizeNoteName(noteData) === normalizedPlayed) {
-      el.classList.add('correct');
-      el.classList.remove('wrong');
-      matchedAny = true;
+  // Check if played note matches any expected pitch
+  const matchedAny = expectedPitches.some(p => normalizeNoteName(p) === normalizedPlayed);
+
+  // Get current note elements for visual feedback
+  const currentElements = Array.from(notation.querySelectorAll('.note.current'));
+
+  if (matchedAny && currentElements.length > 0) {
+    // Find which element to mark by matching pitch via Verovio's pname/oct
+    for (const el of currentElements) {
+      if (el.classList.contains('correct')) continue;
+
+      const id = el.getAttribute('id');
+      if (!id) continue;
+
+      const elemData = toolkit.getElementAttr(id);
+      if (!elemData || !elemData.pname || !elemData.oct) continue;
+
+      // Get base note from Verovio (e.g., 'g', '4')
+      const basePitch = (elemData.pname as string).toUpperCase();
+      const octave = elemData.oct;
+
+      // Check if played note matches this element's base pitch
+      const playedBase = normalizedPlayed.charAt(0);
+      const playedOctave = normalizedPlayed.slice(-1);
+
+      if (basePitch === playedBase && octave === playedOctave) {
+        el.classList.add('correct');
+        el.classList.remove('wrong');
+        break;
+      }
     }
-  });
+  }
 
   // Also check upcoming notes (be forgiving of early plays)
-  // Look at the next beat group that hasn't been played yet
-  if (!matchedAny && currentBeatIndex < visualGroups.length) {
-    const upcomingGroup = visualGroups[currentBeatIndex];
-    for (const el of upcomingGroup.elements) {
-      if (el.classList.contains('note')) {
-        const noteData = getNoteDataFromElement(el);
-        if (noteData && normalizeNoteName(noteData) === normalizedPlayed) {
-          // Mark as correct early - it will show when the note becomes current
-          el.setAttribute('data-early-correct', 'true');
-          matchedAny = true;
+  let matchedUpcoming = false;
+  if (!matchedAny && currentBeatIndex < timingEvents.length) {
+    const upcomingEvent = timingEvents[currentBeatIndex];
+    const upcomingMatched = upcomingEvent.pitches.some(p => normalizeNoteName(p) === normalizedPlayed);
+
+    if (upcomingMatched && currentBeatIndex < visualGroups.length) {
+      const upcomingGroup = visualGroups[currentBeatIndex];
+      for (const el of upcomingGroup.elements) {
+        if (el.classList.contains('note')) {
+          const id = el.getAttribute('id');
+          if (!id) continue;
+
+          const elemData = toolkit.getElementAttr(id);
+          if (!elemData || !elemData.pname || !elemData.oct) continue;
+
+          const basePitch = (elemData.pname as string).toUpperCase();
+          const octave = elemData.oct;
+          const playedBase = normalizedPlayed.charAt(0);
+          const playedOctave = normalizedPlayed.slice(-1);
+
+          if (basePitch === playedBase && octave === playedOctave) {
+            el.setAttribute('data-early-correct', 'true');
+            matchedUpcoming = true;
+            break;
+          }
         }
       }
     }
   }
 
-  if (!matchedAny && currentElements.length > 0) {
+  if (!matchedAny && !matchedUpcoming && currentElements.length > 0) {
     currentElements.forEach((el) => {
       if (!el.classList.contains('correct')) {
         el.classList.add('wrong');
@@ -669,24 +740,6 @@ function checkNoteMatch(playedNote: string) {
       }
     });
   }
-}
-
-function getNoteDataFromElement(el: SVGElement): string | null {
-  const id = el.getAttribute('id');
-  if (id && toolkit) {
-    try {
-      const elemData = toolkit.getElementAttr(id);
-      if (elemData && elemData.pname && elemData.oct) {
-        let noteName = (elemData.pname as string).toUpperCase();
-        if (elemData.accid === 's') noteName += '#';
-        if (elemData.accid === 'f') noteName += 'b';
-        return `${noteName}${elemData.oct}`;
-      }
-    } catch {
-      // Fallback
-    }
-  }
-  return null;
 }
 
 function setupControls() {
@@ -1228,27 +1281,43 @@ function onPieceComplete() {
 function onPieceStudySegmentComplete() {
   if (!currentPieceStudy) return;
 
-  // Advance to next segment
-  const hasMore = currentPieceStudy.nextStep();
+  // Reset visual highlighting
+  const notation = document.getElementById('notation')!;
+  notation.querySelectorAll('.note, .rest').forEach((el) => {
+    el.classList.remove('current', 'past', 'correct', 'wrong');
+    el.removeAttribute('data-early-correct');
+  });
 
-  if (hasMore) {
-    // Load next segment and continue
-    loadCurrentSegment();
-    updateSegmentDisplay();
+  // Auto-advance if no mistakes, loop if there were mistakes
+  if (mistakeCount === 0) {
+    // Advance to next segment
+    const hasMore = currentPieceStudy.nextStep();
 
-    // Start playing the next segment
-    isCountingOff = true;
-    countoffBeats = 0;
-    const countoffTotal = currentTimeSig.beats;
-    scheduleMusic(countoffTotal);
-    Tone.getTransport().start();
-  } else {
-    // Piece study complete - stop playing
-    stop();
-    const progressInfo = document.getElementById('progressInfo');
-    if (progressInfo) {
-      progressInfo.textContent = 'Complete! Use ← to review.';
+    if (hasMore) {
+      loadCurrentSegment();
+      updateSegmentDisplay();
+
+      // Continue playing with countoff for new segment
+      isCountingOff = true;
+      countoffBeats = 0;
+      const countoffTotal = currentTimeSig.beats;
+      scheduleMusic(countoffTotal);
+      Tone.getTransport().start();
+    } else {
+      // Piece complete
+      stop();
+      const progressInfo = document.getElementById('progressInfo');
+      if (progressInfo) {
+        progressInfo.textContent = 'Complete! Use ← to review.';
+      }
     }
+  } else {
+    // Had mistakes - loop the current segment (no countoff)
+    mistakeCount = 0;
+    isCountingOff = false;
+    countoffBeats = 0;
+    scheduleMusic(0);
+    Tone.getTransport().start();
   }
 }
 
@@ -1342,6 +1411,7 @@ function advanceBeat() {
 
   const currentGroup = visualGroups[currentBeatIndex];
 
+  // Visual highlighting
   currentGroup.elements.forEach((el) => {
     el.classList.add('current');
 
@@ -1350,15 +1420,15 @@ function advanceBeat() {
       el.classList.add('correct');
       el.removeAttribute('data-early-correct');
     }
-
-    if (el.classList.contains('note')) {
-      const pitch = getNoteDataFromElement(el) ?? 'C4';
-      if (pitch && sampler && sampler.loaded) {
-        // Use longer duration for sustain
-        sampler.triggerAttackRelease(pitch, '2n');
-      }
-    }
   });
+
+  // Play pitches from source data (timingEvents), NOT from Verovio SVG
+  const timingEvent = timingEvents[currentBeatIndex];
+  if (timingEvent && sampler && sampler.loaded) {
+    for (const pitch of timingEvent.pitches) {
+      sampler.triggerAttackRelease(pitch, '2n');
+    }
+  }
 
   currentBeatIndex++;
 }

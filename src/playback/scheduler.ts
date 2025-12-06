@@ -82,7 +82,7 @@ export function buildTimingEvents(
     const nextTime =
       i < sortedTimes.length - 1 ? sortedTimes[i + 1] : time + allEvents.get(time)!;
     const duration = nextTime - time;
-    events.push({ time, duration });
+    events.push({ time, duration, pitches: [] });
   }
 
   return events;

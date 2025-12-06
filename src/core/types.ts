@@ -145,6 +145,8 @@ export interface TimingEvent {
   time: number;
   /** Duration in beats */
   duration: number;
+  /** Pitches to play at this time (e.g., ['C4', 'E4', 'G4']) */
+  pitches: string[];
 }
 
 /**

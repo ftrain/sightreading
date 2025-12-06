@@ -337,13 +337,13 @@ body {
 }
 
 .tempo-control input[type='number'] {
-  width: 50px;
-  padding: var(--space-xs) var(--space-sm);
+  width: 70px;
+  padding: var(--space-sm) var(--space-sm);
   background: var(--bg);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
   color: var(--text);
-  font-size: 0.875rem;
+  font-size: 1rem;
   text-align: center;
 }
 
