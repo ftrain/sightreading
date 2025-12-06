@@ -53,6 +53,8 @@ export interface PieceStudyConfig {
   explanations?: string[];
   /** Overall piece description */
   description?: string;
+  /** Learning mode: 'segments' (fixed chunks) or 'sliding' (progressive window) */
+  learningMode?: 'segments' | 'sliding';
 }
 
 // ============================================
@@ -72,6 +74,7 @@ class SegmentMusicSource implements MusicSource {
   private _key: KeyInfo;
   private _description: string;
   private _suggestedBpm: number;
+  private _startMeasure: number;
 
   constructor(
     rightHandNotes: NoteData[],
@@ -79,7 +82,8 @@ class SegmentMusicSource implements MusicSource {
     timeSignature: TimeSignature,
     key: KeyInfo,
     description: string,
-    suggestedBpm: number
+    suggestedBpm: number,
+    startMeasure: number = 1
   ) {
     this._rightHandNotes = rightHandNotes;
     this._leftHandNotes = leftHandNotes;
@@ -87,6 +91,7 @@ class SegmentMusicSource implements MusicSource {
     this._key = key;
     this._description = description;
     this._suggestedBpm = suggestedBpm;
+    this._startMeasure = startMeasure;
   }
 
   getMusic(): MusicData {
@@ -98,6 +103,7 @@ class SegmentMusicSource implements MusicSource {
       metadata: {
         description: this._description,
         suggestedBpm: this._suggestedBpm,
+        startMeasure: this._startMeasure,
       },
     };
   }
@@ -109,11 +115,24 @@ class SegmentMusicSource implements MusicSource {
 
 /**
  * Lesson for studying a piece in segments.
+ *
+ * Supports two learning modes:
+ * - 'segments': Fixed chunks (measure 1, then 2, then 3...)
+ * - 'sliding': Progressive window (measure 1 → 1-2 → 2-3 → 3-4...)
  */
 export class PieceStudyLesson {
   private config: PieceStudyConfig;
   private segments: SegmentMusicSource[] = [];
+  private measures: NoteData[][] = []; // Individual measures for RH
+  private measuresLH: NoteData[][] = []; // Individual measures for LH
   private state: LessonState;
+
+  // Sliding window state
+  private windowStart = 0; // First measure in current window (0-indexed)
+  private windowEnd = 0;   // Last measure in current window (0-indexed)
+  // Phases: single → pair → single → pair → ... → review (every 4 measures)
+  private windowPhase: 'single' | 'pair' | 'review' = 'single';
+  private groupStart = 0;  // Start of current 4-measure group for review
 
   // Events
   readonly onStepChange = new EventEmitter<{ step: number; total: number }>();
@@ -131,25 +150,37 @@ export class PieceStudyLesson {
   }
 
   /**
+   * Check if using sliding window mode.
+   */
+  get isSlidingMode(): boolean {
+    return this.config.learningMode === 'sliding';
+  }
+
+  /**
    * Build segments from the full piece.
    */
   private buildSegments(): void {
     const barsPerStep = this.config.barsPerStep ?? 4;
     const beatsPerBar = this.config.timeSignature.beats;
 
-    // Calculate notes per segment based on duration
-    const notesPerBarBeats = beatsPerBar;
-
-    // Split right hand into segments
-    const rhSegments = this.splitIntoSegments(
+    // Always split into individual measures for sliding window support
+    this.measures = this.splitIntoSegments(
       this.config.rightHandNotes,
-      barsPerStep * notesPerBarBeats
+      beatsPerBar // 1 measure = beatsPerBar beats
+    );
+    this.measuresLH = this.splitIntoSegments(
+      this.config.leftHandNotes,
+      beatsPerBar
     );
 
-    // Split left hand into segments
+    // For segments mode, group measures into larger chunks
+    const rhSegments = this.splitIntoSegments(
+      this.config.rightHandNotes,
+      barsPerStep * beatsPerBar
+    );
     const lhSegments = this.splitIntoSegments(
       this.config.leftHandNotes,
-      barsPerStep * notesPerBarBeats
+      barsPerStep * beatsPerBar
     );
 
     // Create music sources for each segment
@@ -214,6 +245,10 @@ export class PieceStudyLesson {
     explanation: string;
     completions: number;
   } {
+    if (this.isSlidingMode) {
+      return this.getSlidingWindowStep();
+    }
+
     const segment = this.segments[this.state.currentStepIndex];
     const music = segment.getMusic();
 
@@ -227,9 +262,64 @@ export class PieceStudyLesson {
   }
 
   /**
+   * Get current step for sliding window mode.
+   */
+  private getSlidingWindowStep(): {
+    index: number;
+    total: number;
+    musicSource: MusicSource;
+    explanation: string;
+    completions: number;
+  } {
+    // Combine notes from windowStart to windowEnd (inclusive)
+    const rhNotes: NoteData[] = [];
+    const lhNotes: NoteData[] = [];
+
+    for (let i = this.windowStart; i <= this.windowEnd; i++) {
+      if (this.measures[i]) rhNotes.push(...this.measures[i]);
+      if (this.measuresLH[i]) lhNotes.push(...this.measuresLH[i]);
+    }
+
+    let measureRange: string;
+    if (this.windowPhase === 'review') {
+      // Review uses dash: 1-4
+      measureRange = `Review: ${this.windowStart + 1}-${this.windowEnd + 1}`;
+    } else if (this.windowStart === this.windowEnd) {
+      // Single measure: just the number
+      measureRange = `${this.windowStart + 1}`;
+    } else {
+      // Pair uses plus: 1+2
+      measureRange = `${this.windowStart + 1}+${this.windowEnd + 1}`;
+    }
+
+    const musicSource = new SegmentMusicSource(
+      rhNotes,
+      lhNotes,
+      this.config.timeSignature,
+      this.config.key,
+      measureRange,
+      this.config.suggestedBpm ?? 60,
+      this.windowStart + 1 // 1-indexed measure number
+    );
+
+    return {
+      index: this.windowStart,
+      total: this.measures.length,
+      musicSource,
+      explanation: measureRange,
+      completions: 0,
+    };
+  }
+
+  /**
    * Advance to next step.
+   * In sliding mode: progress the learning window.
    */
   nextStep(): boolean {
+    if (this.isSlidingMode) {
+      return this.advanceSlidingWindow();
+    }
+
     if (this.state.currentStepIndex >= this.segments.length - 1) {
       this.state.completedAt = new Date();
       this.onComplete.emit();
@@ -245,9 +335,81 @@ export class PieceStudyLesson {
   }
 
   /**
+   * Advance the sliding window.
+   * Pattern: 1 → 1-2 → 2 → 2-3 → 3 → 3-4 → 1-4 (review) → 4-5 → 5 → 5-6 → ...
+   */
+  private advanceSlidingWindow(): boolean {
+    const totalMeasures = this.measures.length;
+
+    if (this.windowPhase === 'single') {
+      // From single, expand to pair with next measure
+      if (this.windowEnd < totalMeasures - 1) {
+        this.windowEnd++;
+        this.windowPhase = 'pair';
+        this.emitStepChange(totalMeasures);
+        return true;
+      } else {
+        // At the last measure, we're done
+        this.state.completedAt = new Date();
+        this.onComplete.emit();
+        return false;
+      }
+    } else if (this.windowPhase === 'pair') {
+      // From pair, check if we've completed 4 measures from group start
+      const measuresInGroup = this.windowEnd - this.groupStart + 1;
+
+      if (measuresInGroup >= 4) {
+        // Time for review of the 4-measure group
+        this.windowStart = this.groupStart;
+        this.windowEnd = this.groupStart + 3;
+        this.windowPhase = 'review';
+        this.emitStepChange(totalMeasures);
+        return true;
+      } else {
+        // Move to single on the second measure of the pair
+        this.windowStart = this.windowEnd;
+        this.windowPhase = 'single';
+        this.emitStepChange(totalMeasures);
+        return true;
+      }
+    } else if (this.windowPhase === 'review') {
+      // After review, bridge to next group with a pair
+      const nextStart = this.windowEnd; // Last measure of review
+
+      if (nextStart < totalMeasures - 1) {
+        // Start next group, bridge with pair from last reviewed measure
+        this.groupStart = nextStart; // New group starts at measure 4 (0-indexed: 3)
+        this.windowStart = nextStart;
+        this.windowEnd = nextStart + 1;
+        this.windowPhase = 'pair';
+        this.emitStepChange(totalMeasures);
+        return true;
+      } else {
+        // No more measures, we're done
+        this.state.completedAt = new Date();
+        this.onComplete.emit();
+        return false;
+      }
+    }
+
+    return false;
+  }
+
+  private emitStepChange(totalMeasures: number): void {
+    this.onStepChange.emit({
+      step: this.windowStart,
+      total: totalMeasures,
+    });
+  }
+
+  /**
    * Go to previous step.
    */
   previousStep(): boolean {
+    if (this.isSlidingMode) {
+      return this.rewindSlidingWindow();
+    }
+
     if (this.state.currentStepIndex <= 0) return false;
 
     this.state.currentStepIndex--;
@@ -259,9 +421,56 @@ export class PieceStudyLesson {
   }
 
   /**
+   * Rewind the sliding window.
+   * Reverses the advancement pattern.
+   */
+  private rewindSlidingWindow(): boolean {
+    const totalMeasures = this.measures.length;
+
+    if (this.windowPhase === 'review') {
+      // Go back to the pair before review (e.g., 1-4 → 3-4)
+      this.windowStart = this.windowEnd - 1;
+      this.windowPhase = 'pair';
+      this.emitStepChange(totalMeasures);
+      return true;
+    } else if (this.windowPhase === 'pair') {
+      // Go back to single on the first measure of the pair
+      this.windowEnd = this.windowStart;
+      this.windowPhase = 'single';
+      this.emitStepChange(totalMeasures);
+      return true;
+    } else if (this.windowPhase === 'single') {
+      // Go back to previous pair
+      if (this.windowStart > 0) {
+        this.windowStart--;
+        this.windowEnd = this.windowStart + 1;
+        this.windowPhase = 'pair';
+        this.emitStepChange(totalMeasures);
+        return true;
+      }
+      return false; // Already at the beginning
+    }
+
+    return false;
+  }
+
+  /**
    * Jump to specific step.
    */
   goToStep(index: number): boolean {
+    if (this.isSlidingMode) {
+      // In sliding mode, jump to a specific measure as single
+      if (index < 0 || index >= this.measures.length) return false;
+      this.windowStart = index;
+      this.windowEnd = index;
+      this.windowPhase = 'single';
+      this.onStepChange.emit({
+        step: index,
+        total: this.measures.length,
+      });
+      return true;
+    }
+
     if (index < 0 || index >= this.segments.length) return false;
 
     this.state.currentStepIndex = index;
@@ -277,6 +486,24 @@ export class PieceStudyLesson {
    */
   recordCompletion(): void {
     this.state.stepCompletions[this.state.currentStepIndex]++;
+  }
+
+  /**
+   * Get total number of measures (for sliding mode).
+   */
+  getMeasureCount(): number {
+    return this.measures.length;
+  }
+
+  /**
+   * Get current window info (for sliding mode display).
+   */
+  getWindowInfo(): { start: number; end: number; phase: 'single' | 'pair' | 'review' } {
+    return {
+      start: this.windowStart,
+      end: this.windowEnd,
+      phase: this.windowPhase,
+    };
   }
 
   // ============================================

@@ -34,6 +34,7 @@ import {
   createXmlSource,
 } from './music/sources';
 import { buildMusicXML } from './music/xml/builder';
+import { PieceStudyLesson } from './curriculum/lessons/piece-study';
 import { recordAttempt, getAccuracy } from './app/analytics';
 
 // State
@@ -89,6 +90,9 @@ let currentLessonDescription = '';
 let currentRightHandNotes: NoteData[] = [];
 let currentLeftHandNotes: NoteData[] = [];
 
+// Piece study lesson for imported files (chunks into segments)
+let currentPieceStudy: PieceStudyLesson | null = null;
+
 
 // Detect mobile device and orientation
 function detectMobile(): boolean {
@@ -137,7 +141,13 @@ async function init() {
     updateMobileMode();
     updateVerovioOptions();
     if (!isPlaying) {
-      wasMobile !== isMobileMode() ? generateAndRender() : rerenderCurrentMusic();
+      // In piece study mode, just re-render current segment
+      // In sight reading mode, regenerate if mobile mode changed
+      if (currentPieceStudy) {
+        rerenderCurrentMusic();
+      } else {
+        wasMobile !== isMobileMode() ? generateAndRender() : rerenderCurrentMusic();
+      }
     }
   };
   window.addEventListener('resize', handleResize);
@@ -164,6 +174,8 @@ function updateVerovioOptions() {
     spacingLinear: 0.3,
     spacingStaff: 6,
     spacingSystem: 4,
+    // Show measure numbers on every measure
+    mnumInterval: 1,
   });
 }
 
@@ -264,6 +276,9 @@ function playMetronomeClick(subdivisionInBeat: number) {
 }
 
 function generateAndRender() {
+  // Clear piece study mode when generating new procedural exercises
+  currentPieceStudy = null;
+
   updateVerovioOptions();
   const {
     xml,
@@ -846,6 +861,11 @@ function setupControls() {
   }
 
   levelUpBtn?.addEventListener('click', () => {
+    // In piece study mode, navigate to next measure
+    if (currentPieceStudy) {
+      nextSegment();
+      return;
+    }
     // If tempo mastery achieved, increase tempo instead of level
     if (shouldIncreaseTempo()) {
       increaseTempo();
@@ -863,6 +883,11 @@ function setupControls() {
   });
 
   levelDownBtn?.addEventListener('click', () => {
+    // In piece study mode, navigate to previous measure
+    if (currentPieceStudy) {
+      previousSegment();
+      return;
+    }
     const current = getLevel();
     if (current > 1) {
       if (isPlaying) stop();
@@ -880,7 +905,7 @@ function setupControls() {
     }
   });
 
-  // Spacebar to toggle play/pause
+  // Keyboard shortcuts
   document.addEventListener('keydown', async (e) => {
     // Ignore if user is typing in an input field
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) {
@@ -892,6 +917,16 @@ function setupControls() {
         stop();
       } else {
         await start();
+      }
+    }
+    // Arrow keys for segment navigation (when in piece study mode)
+    if (currentPieceStudy) {
+      if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        nextSegment();
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        previousSegment();
       }
     }
   });
@@ -940,15 +975,27 @@ function setupControls() {
   }
 }
 
-// Load imported music data into the app
+// Load imported music data into the app using PieceStudyLesson for chunking
 function loadImportedMusic(
   musicData: { rightHandNotes: NoteData[]; leftHandNotes: NoteData[]; timeSignature: { beats: number; beatType: number }; key: KeyInfo; metadata: { description: string; suggestedBpm: number } },
   filename: string
 ) {
-  // Update current notes
-  currentRightHandNotes = musicData.rightHandNotes;
-  currentLeftHandNotes = musicData.leftHandNotes;
-  currentTimeSig = musicData.timeSignature;
+  // Create a PieceStudyLesson with sliding window for progressive learning
+  // Pattern: Measure 1 → 1-2 → 2-3 → 3-4 → ...
+  currentPieceStudy = new PieceStudyLesson({
+    id: `import-${Date.now()}`,
+    title: musicData.metadata.description || filename,
+    rightHandNotes: musicData.rightHandNotes,
+    leftHandNotes: musicData.leftHandNotes,
+    timeSignature: musicData.timeSignature,
+    key: musicData.key,
+    suggestedBpm: musicData.metadata.suggestedBpm,
+    barsPerStep: 1,
+    learningMode: 'sliding', // Progressive sliding window
+  });
+
+  // Load the first segment
+  loadCurrentSegment();
 
   // Update BPM from import
   const suggestedBpm = musicData.metadata.suggestedBpm;
@@ -959,23 +1006,46 @@ function loadImportedMusic(
     setBpm(suggestedBpm);
   }
 
-  // Build MusicXML from imported notes
+  // Show segment navigation
+  updateSegmentDisplay();
+}
+
+// Load the current segment from piece study lesson
+function loadCurrentSegment() {
+  if (!currentPieceStudy) return;
+
+  const step = currentPieceStudy.getCurrentStep();
+  const music = step.musicSource.getMusic();
+
+  // Update current notes
+  currentRightHandNotes = music.rightHandNotes;
+  currentLeftHandNotes = music.leftHandNotes;
+  currentTimeSig = music.timeSignature;
+
+  // Build MusicXML from segment notes with correct measure numbers
   currentPieceXml = buildMusicXML(
     currentRightHandNotes,
     currentLeftHandNotes,
     {
-      key: musicData.key,
+      key: music.key,
       timeSignature: currentTimeSig,
+      startMeasure: music.metadata.startMeasure,
     }
   );
 
   // Update lesson description
-  currentLessonDescription = musicData.metadata.description || `Imported: ${filename}`;
+  currentLessonDescription = `${currentPieceStudy.getTitle()} — ${step.explanation}`;
 
   // Render the music
   renderCurrentMusic();
+}
 
-  // Update display
+// Update segment display in UI
+function updateSegmentDisplay() {
+  if (!currentPieceStudy) return;
+
+  const step = currentPieceStudy.getCurrentStep();
+
   const lessonInfo = document.getElementById('lessonInfo');
   if (lessonInfo) {
     lessonInfo.textContent = currentLessonDescription;
@@ -988,12 +1058,39 @@ function loadImportedMusic(
 
   const levelIndicator = document.getElementById('levelIndicator');
   if (levelIndicator) {
-    levelIndicator.textContent = 'Imported';
+    // Show the current window (e.g., "Measure 1" or "Measures 1-2")
+    levelIndicator.textContent = step.explanation;
   }
 
   const progressInfo = document.getElementById('progressInfo');
   if (progressInfo) {
-    progressInfo.textContent = '';
+    if (currentPieceStudy.isSlidingMode) {
+      progressInfo.textContent = `→ to advance (${step.total} measures total)`;
+    } else {
+      progressInfo.textContent = `Use ← → to navigate measures`;
+    }
+  }
+}
+
+// Navigate to next segment
+function nextSegment() {
+  if (!currentPieceStudy) return;
+  if (isPlaying) stop();
+
+  if (currentPieceStudy.nextStep()) {
+    loadCurrentSegment();
+    updateSegmentDisplay();
+  }
+}
+
+// Navigate to previous segment
+function previousSegment() {
+  if (!currentPieceStudy) return;
+  if (isPlaying) stop();
+
+  if (currentPieceStudy.previousStep()) {
+    loadCurrentSegment();
+    updateSegmentDisplay();
   }
 }
 
@@ -1105,6 +1202,58 @@ function onPieceComplete() {
     el.classList.add('past');
   });
 
+  // Reset tracking for next round
+  mistakeCount = 0;
+  currentBeatIndex = 0;
+
+  // Fully reset Tone.js Transport before scheduling new piece
+  Tone.getTransport().stop();
+  Tone.getTransport().cancel();
+  scheduledEvents = [];
+  Tone.getTransport().seconds = 0;
+
+  // Reset debounce timers
+  lastMetronomeTime = 0;
+  lastAdvanceBeatTime = 0;
+
+  // Handle piece study mode separately from sight reading mode
+  if (currentPieceStudy) {
+    onPieceStudySegmentComplete();
+  } else {
+    onSightReadingComplete();
+  }
+}
+
+// Handle completion of a piece study segment
+function onPieceStudySegmentComplete() {
+  if (!currentPieceStudy) return;
+
+  // Advance to next segment
+  const hasMore = currentPieceStudy.nextStep();
+
+  if (hasMore) {
+    // Load next segment and continue
+    loadCurrentSegment();
+    updateSegmentDisplay();
+
+    // Start playing the next segment
+    isCountingOff = true;
+    countoffBeats = 0;
+    const countoffTotal = currentTimeSig.beats;
+    scheduleMusic(countoffTotal);
+    Tone.getTransport().start();
+  } else {
+    // Piece study complete - stop playing
+    stop();
+    const progressInfo = document.getElementById('progressInfo');
+    if (progressInfo) {
+      progressInfo.textContent = 'Complete! Use ← to review.';
+    }
+  }
+}
+
+// Handle completion of sight reading exercise
+function onSightReadingComplete() {
   // Record analytics
   const noteCount = currentRightHandNotes.filter(n => !n.isRest).length +
     currentLeftHandNotes.filter(n => !n.isRest).length;
@@ -1123,29 +1272,13 @@ function onPieceComplete() {
     }
   }
 
-  // Reset tracking for next round
-  mistakeCount = 0;
-  currentBeatIndex = 0;
-
   // Generate new piece
   generateAndRender();
 
-  // Fully reset Tone.js Transport before scheduling new piece
-  Tone.getTransport().stop();
-  Tone.getTransport().cancel();
-  scheduledEvents = [];
-  // Use seconds property for more reliable reset
-  Tone.getTransport().seconds = 0;
-
-  // Reset debounce timers to allow first events of new piece
-  lastMetronomeTime = 0;
-  lastAdvanceBeatTime = 0;
-
+  // Start playing new piece
   isCountingOff = true;
   countoffBeats = 0;
   const countoffTotal = currentTimeSig.beats;
-  // Don't show initial number - it will appear on first beat
-
   scheduleMusic(countoffTotal);
   Tone.getTransport().start();
 }

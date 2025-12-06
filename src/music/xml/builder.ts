@@ -48,6 +48,20 @@ function getNoteType(duration: number): string {
 // ============================================
 
 /**
+ * Check if an accidental is already implied by the key signature.
+ * For example, F# in G major doesn't need an accidental shown.
+ */
+function isAccidentalInKey(step: string, alter: number, keyScale: string[]): boolean {
+  if (alter === 0) return true; // Natural notes - check if in scale as natural
+
+  const accidentalSuffix = alter === 1 ? '#' : 'b';
+  const noteWithAccidental = step + accidentalSuffix;
+
+  // Check if this accidental is in the key's scale
+  return keyScale.some(scaleNote => scaleNote === noteWithAccidental);
+}
+
+/**
  * Generate XML for a single note or rest.
  *
  * @param note - Note data
@@ -55,6 +69,7 @@ function getNoteType(duration: number): string {
  * @param divisions - MusicXML divisions per quarter note
  * @param beamState - Current beam state (modified in place)
  * @param nextNote - Next note for beam continuity
+ * @param keyScale - Scale notes from key signature (e.g., ['G', 'A', 'B', 'C', 'D', 'E', 'F#'])
  * @param finger - Optional fingering number
  */
 function noteToXML(
@@ -63,6 +78,7 @@ function noteToXML(
   divisions: number,
   beamState: BeamState,
   nextNote: NoteData | null,
+  keyScale: string[],
   finger?: Finger
 ): string {
   const dur = Math.round(note.duration * divisions);
@@ -79,18 +95,21 @@ function noteToXML(
 `;
   }
 
-  // Note pitch
+  // Note pitch - alter is always needed for correct playback
   let alterXml = '';
   if (note.alter !== 0) {
     alterXml = `          <alter>${note.alter}</alter>\n`;
   }
 
-  // Accidental display
+  // Accidental display - only show if NOT already in key signature
   let accidentalXml = '';
-  if (note.alter === 1) {
-    accidentalXml = `        <accidental>sharp</accidental>\n`;
-  } else if (note.alter === -1) {
-    accidentalXml = `        <accidental>flat</accidental>\n`;
+  const needsAccidental = !isAccidentalInKey(note.step, note.alter, keyScale);
+  if (needsAccidental) {
+    if (note.alter === 1) {
+      accidentalXml = `        <accidental>sharp</accidental>\n`;
+    } else if (note.alter === -1) {
+      accidentalXml = `        <accidental>flat</accidental>\n`;
+    }
   }
 
   // Beam logic for eighth notes and shorter
@@ -145,11 +164,15 @@ ${fingeringXml}      </note>
         chordAlterXml = `          <alter>${chordNote.alter}</alter>\n`;
       }
 
+      // Chord accidental - only show if NOT in key signature
       let chordAccidentalXml = '';
-      if (chordNote.alter === 1) {
-        chordAccidentalXml = `        <accidental>sharp</accidental>\n`;
-      } else if (chordNote.alter === -1) {
-        chordAccidentalXml = `        <accidental>flat</accidental>\n`;
+      const chordNeedsAccidental = !isAccidentalInKey(chordNote.step, chordNote.alter, keyScale);
+      if (chordNeedsAccidental) {
+        if (chordNote.alter === 1) {
+          chordAccidentalXml = `        <accidental>sharp</accidental>\n`;
+        } else if (chordNote.alter === -1) {
+          chordAccidentalXml = `        <accidental>flat</accidental>\n`;
+        }
       }
 
       xml += `      <note>
@@ -187,6 +210,8 @@ export interface MusicXMLOptions {
   rightHandFingering?: Finger[];
   /** Fingering for left hand notes */
   leftHandFingering?: Finger[];
+  /** Starting measure number (1-indexed, default 1) */
+  startMeasure?: number;
 }
 
 /**
@@ -229,8 +254,11 @@ export function buildMusicXML(
   <part id="P1">
 `;
 
+  const startMeasure = options.startMeasure ?? 1;
+
   for (let m = 0; m < numMeasures; m++) {
-    xml += `    <measure number="${m + 1}">
+    const measureNum = startMeasure + m;
+    xml += `    <measure number="${measureNum}">
 `;
 
     // First measure: add attributes
@@ -257,7 +285,7 @@ export function buildMusicXML(
         finger = options.rightHandFingering[rhFingerIdx];
         rhFingerIdx++;
       }
-      xml += noteToXML(note, 1, divisions, rhBeamState, nextNote, finger);
+      xml += noteToXML(note, 1, divisions, rhBeamState, nextNote, options.key.scale, finger);
     }
 
     // Backup to write left hand
@@ -276,7 +304,7 @@ export function buildMusicXML(
         finger = options.leftHandFingering[lhFingerIdx];
         lhFingerIdx++;
       }
-      xml += noteToXML(note, 2, divisions, lhBeamState, nextNote, finger);
+      xml += noteToXML(note, 2, divisions, lhBeamState, nextNote, options.key.scale, finger);
     }
 
     xml += `    </measure>

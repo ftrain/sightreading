@@ -25,6 +25,8 @@ export interface MusicMetadata {
   subLevel?: number;
   /** Additional info for display */
   tags?: string[];
+  /** Starting measure number (1-indexed) for imported segments */
+  startMeasure?: number;
 }
 
 /**
