@@ -16,6 +16,8 @@ src/
   curriculum/     # Lessons and progress tracking
     lessons/      # Lesson implementations
   input/          # MIDI and performance tracking
+  upload/         # MusicXML upload and progressive practice
+  songs/          # Built-in song library
 ```
 
 ## Core Module (`src/core/`)
@@ -132,6 +134,56 @@ Components communicate via EventEmitter:
 - **PlaybackEngine.onComplete** - Piece finished
 - **MidiHandler.onNoteOn/Off** - MIDI input events
 - **PerformanceTracker.onMatch** - Note matching results
+
+## Upload Module (`src/upload/`)
+
+MusicXML file upload and progressive practice session management.
+
+- **parser.ts** - MusicXML parser extracting notes, time/key signatures, measures
+- **steps.ts** - Practice step generation algorithm (single measures, pairs, consolidation)
+- **practice-session.ts** - ProgressivePracticeSession class managing step progression
+
+### Practice Step Algorithm
+The step generator creates a progressive sequence:
+1. Single measure focus
+2. Pair with next measure (bridge learning)
+3. 4-measure consolidation (phrase boundaries)
+4. 8-measure consolidation (larger sections)
+5. Full piece consolidation
+
+### Usage
+```typescript
+import { parseMusicXML, ProgressivePracticeSession } from './upload';
+
+const parsed = parseMusicXML(xmlString);
+const session = new ProgressivePracticeSession(parsed);
+
+// Get current segment to practice
+const segment = session.getCurrentSegment();
+// { rightHand: NoteData[], leftHand: NoteData[], description: 'Measure 1' }
+
+// Advance when mastered
+session.nextStep();
+```
+
+## Songs Module (`src/songs/`)
+
+Built-in song library with public domain pieces.
+
+- **index.ts** - Song registry and lookup functions
+
+### Adding Built-in Songs
+```typescript
+const songs: Song[] = [
+  {
+    id: 'minuet-in-g',
+    title: 'Minuet in G',
+    composer: 'Bach',
+    difficulty: 'beginner',
+    xml: `<?xml version="1.0"?>...`
+  }
+];
+```
 
 ## Design Principles
 

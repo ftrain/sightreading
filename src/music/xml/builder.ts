@@ -10,6 +10,28 @@
 import type { NoteData, TimeSignature, KeyInfo, Finger } from '../../core/types';
 
 // ============================================
+// ID GENERATION
+// ============================================
+
+/**
+ * Generate a unique ID for a note element.
+ * Format: n{hand}{measureIndex}{noteIndex}
+ * Examples: n-r-0-0, n-l-1-2
+ */
+function generateNoteId(hand: 'r' | 'l', measureIndex: number, noteIndex: number): string {
+  return `n-${hand}-${measureIndex}-${noteIndex}`;
+}
+
+/**
+ * Mapping from time (in beats) to SVG element IDs.
+ * Used to link timing events to visual elements.
+ */
+export interface NoteIdMapping {
+  /** Map from time in beats to array of note element IDs at that time */
+  timeToIds: Map<number, string[]>;
+}
+
+// ============================================
 // BEAM STATE TRACKING
 // ============================================
 
@@ -76,6 +98,7 @@ function isAccidentalInKey(step: string, alter: number, keyScale: string[]): boo
  * @param nextNote - Next note for beam continuity
  * @param keyScale - Scale notes from key signature (to determine if accidental should show)
  * @param finger - Optional fingering number
+ * @param noteId - Unique ID for this note element (for SVG mapping)
  */
 function noteToXML(
   note: NoteData,
@@ -84,14 +107,16 @@ function noteToXML(
   beamState: BeamState,
   nextNote: NoteData | null,
   keyScale: string[],
-  finger?: Finger
+  finger?: Finger,
+  noteId?: string
 ): string {
   const dur = Math.round(note.duration * divisions);
+  const idAttr = noteId ? ` xml:id="${noteId}"` : '';
 
   // Rest handling
   if (note.isRest) {
     beamState.inBeam = false;
-    return `      <note>
+    return `      <note${idAttr}>
         <rest/>
         <duration>${dur}</duration>
         ${getNoteType(note.duration)}
@@ -149,7 +174,7 @@ function noteToXML(
   }
 
   // Main note XML
-  let xml = `      <note>
+  let xml = `      <note${idAttr}>
         <pitch>
           <step>${note.step}</step>
 ${alterXml}          <octave>${note.octave}</octave>
@@ -210,6 +235,20 @@ export interface MusicXMLOptions {
   rightHandFingering?: Finger[];
   /** Fingering for left hand notes */
   leftHandFingering?: Finger[];
+  /** Whether to generate unique IDs for notes (for SVG mapping) */
+  generateIds?: boolean;
+  /** Add system breaks every N measures (0 = no breaks) */
+  systemBreakEvery?: number;
+}
+
+/**
+ * Result from building MusicXML
+ */
+export interface MusicXMLResult {
+  /** The generated MusicXML string */
+  xml: string;
+  /** Mapping from time (in beats) to note element IDs */
+  noteIdMapping: NoteIdMapping;
 }
 
 /**
@@ -218,17 +257,20 @@ export interface MusicXMLOptions {
  * @param rightHandNotes - Right hand note data
  * @param leftHandNotes - Left hand note data
  * @param options - Build options
+ * @returns MusicXMLResult with XML and note ID mapping
  */
 export function buildMusicXML(
   rightHandNotes: NoteData[],
   leftHandNotes: NoteData[],
   options: MusicXMLOptions
-): string {
+): MusicXMLResult {
   const divisions = options.divisions ?? 4;
   const beatsPerMeasure =
     options.timeSignature.beatType === 8
       ? options.timeSignature.beats / 2
       : options.timeSignature.beats;
+  const generateIds = options.generateIds ?? true; // Default to generating IDs
+  const systemBreakEvery = options.systemBreakEvery ?? 0; // 0 = no breaks
 
   // Split notes into measures
   const rightHand = splitIntoMeasures(rightHandNotes, beatsPerMeasure);
@@ -238,6 +280,18 @@ export function buildMusicXML(
   // Track fingering indices
   let rhFingerIdx = 0;
   let lhFingerIdx = 0;
+
+  // Track note IDs mapping (time in beats -> note IDs)
+  const timeToIds: Map<number, string[]> = new Map();
+  const roundTime = (t: number) => Math.round(t * 1000) / 1000;
+
+  // Helper to add ID to mapping
+  const addIdToMapping = (time: number, id: string) => {
+    const key = roundTime(time);
+    const existing = timeToIds.get(key) || [];
+    existing.push(id);
+    timeToIds.set(key, existing);
+  };
 
   // Build XML
   let xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -252,9 +306,20 @@ export function buildMusicXML(
   <part id="P1">
 `;
 
+  // Track cumulative time for each hand
+  let rhCumulativeTime = 0;
+  let lhCumulativeTime = 0;
+
   for (let m = 0; m < numMeasures; m++) {
     xml += `    <measure number="${m + 1}">
 `;
+
+    // Add system break at start of measures 5, 9, 13, etc. (when systemBreakEvery is set)
+    // m is 0-indexed, so m=4 is measure 5, m=8 is measure 9, etc.
+    if (systemBreakEvery > 0 && m > 0 && m % systemBreakEvery === 0) {
+      xml += `      <print new-system="yes"/>
+`;
+    }
 
     // First measure: add attributes
     if (m === 0) {
@@ -280,7 +345,15 @@ export function buildMusicXML(
         finger = options.rightHandFingering[rhFingerIdx];
         rhFingerIdx++;
       }
-      xml += noteToXML(note, 1, divisions, rhBeamState, nextNote, options.key.scale, finger);
+
+      // Generate ID and add to mapping
+      const noteId = generateIds ? generateNoteId('r', m, i) : undefined;
+      if (noteId) {
+        addIdToMapping(rhCumulativeTime, noteId);
+      }
+
+      xml += noteToXML(note, 1, divisions, rhBeamState, nextNote, options.key.scale, finger, noteId);
+      rhCumulativeTime += note.duration;
     }
 
     // Backup to write left hand
@@ -299,7 +372,15 @@ export function buildMusicXML(
         finger = options.leftHandFingering[lhFingerIdx];
         lhFingerIdx++;
       }
-      xml += noteToXML(note, 2, divisions, lhBeamState, nextNote, options.key.scale, finger);
+
+      // Generate ID and add to mapping
+      const noteId = generateIds ? generateNoteId('l', m, i) : undefined;
+      if (noteId) {
+        addIdToMapping(lhCumulativeTime, noteId);
+      }
+
+      xml += noteToXML(note, 2, divisions, lhBeamState, nextNote, options.key.scale, finger, noteId);
+      lhCumulativeTime += note.duration;
     }
 
     xml += `    </measure>
@@ -309,7 +390,10 @@ export function buildMusicXML(
   xml += `  </part>
 </score-partwise>`;
 
-  return xml;
+  return {
+    xml,
+    noteIdMapping: { timeToIds }
+  };
 }
 
 // ============================================

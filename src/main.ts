@@ -30,8 +30,9 @@ import {
   parseMusicXML,
   ProgressivePracticeSession,
   getStepTypeLabel,
+  getStepDescription,
 } from './upload';
-import { buildMusicXML } from './music/xml/builder';
+import { buildMusicXML, type NoteIdMapping } from './music/xml/builder';
 import { getSongById } from './songs';
 
 // State
@@ -74,8 +75,10 @@ let metronomeVolume = -20; // dB base for metronome (quieter default)
 // Store the current piece's XML
 let currentPieceXml: string = '';
 
-// Performance tracking - did user play all notes correctly?
+// Performance tracking
 let hadMistake = false;
+let notesPlayed = 0;       // Count of notes correctly played by user
+let notesRequired = 0;     // Count of notes that need to be played
 
 // Current lesson info
 let currentLessonDescription = '';
@@ -83,6 +86,9 @@ let currentLessonDescription = '';
 // Current piece notes for playback timing (source of truth)
 let currentRightHandNotes: NoteData[] = [];
 let currentLeftHandNotes: NoteData[] = [];
+
+// Number of measures in the current piece (for display and countoff decisions)
+let currentMeasureCount = 4;
 
 // App mode: 'levels' for generated exercises, 'practice' for uploaded files
 type AppMode = 'levels' | 'practice';
@@ -122,8 +128,10 @@ async function init() {
 
   updateVerovioOptions();
 
-  // Generate initial music
-  generateAndRender();
+  // Try to restore previous practice session, or generate new music
+  if (!loadPracticeState()) {
+    generateAndRender();
+  }
 
   // Setup UI
   setupControls();
@@ -171,6 +179,10 @@ function updateVerovioOptions() {
   // Smaller scale gives more horizontal room for note spacing
   const scale = isMobileMode() ? 35 : 42;
 
+  // Break every 4 bars if more than 4 measures (using encoded breaks in MusicXML)
+  // Otherwise fit all on one line
+  const breaks = currentMeasureCount > 4 ? 'encoded' : 'none';
+
   toolkit.setOptions({
     pageWidth: width,
     pageHeight: 800,
@@ -178,7 +190,7 @@ function updateVerovioOptions() {
     adjustPageHeight: true,
     footer: 'none',
     header: 'none',
-    breaks: 'none', // Let Verovio fit all 4 measures on one line
+    breaks: breaks,
     // Spacing for eighth notes
     spacingNonLinear: 0.55,
     spacingLinear: 0.3,
@@ -191,19 +203,29 @@ function updateVerovioOptions() {
 function rerenderCurrentMusic() {
   if (!currentPieceXml) return;
   toolkit.loadData(currentPieceXml);
+
+  // Rebuild MEI ID mapping (Verovio generates new IDs each time it loads)
+  const mei = toolkit.getMEI();
+  buildMeiIdMapping(mei);
+
   const svg = toolkit.renderToSVG(1);
   const notation = document.getElementById('notation')!;
   notation.innerHTML = svg;
+
+  // Rebuild timing events to ensure they match the new IDs
+  buildTimingEvents();
 }
 
 // Regenerate XML from current notes (for fingering toggle)
 function regenerateCurrentMusicXML() {
   if (currentRightHandNotes.length === 0 && currentLeftHandNotes.length === 0) return;
-  currentPieceXml = regenerateXMLFromNotes(
+  const result = regenerateXMLFromNotes(
     currentRightHandNotes,
     currentLeftHandNotes,
     currentTimeSig
   );
+  currentPieceXml = result.xml;
+  currentNoteIdMapping = result.noteIdMapping;
 }
 
 async function initAudio() {
@@ -296,6 +318,7 @@ function generateAndRender() {
     suggestedBpm,
     rightHandNotes,
     leftHandNotes,
+    noteIdMapping,
   } = generateMusicXML();
 
   currentTimeSig = timeSignature;
@@ -303,6 +326,7 @@ function generateAndRender() {
   currentLessonDescription = lessonDescription;
   currentRightHandNotes = rightHandNotes;
   currentLeftHandNotes = leftHandNotes;
+  currentNoteIdMapping = noteIdMapping;
 
   // Sync BPM with lesson suggestion on level change
   const bpmInput = document.getElementById('bpm') as HTMLInputElement;
@@ -324,13 +348,144 @@ function generateAndRender() {
 
 function renderCurrentMusic() {
   toolkit.loadData(currentPieceXml);
+
+  // Get MEI to extract Verovio's generated IDs
+  // Verovio preserves IDs from MEI → SVG, but generates new IDs when converting MusicXML → MEI
+  const mei = toolkit.getMEI();
+  buildMeiIdMapping(mei);
+
   const svg = toolkit.renderToSVG(1);
   const notation = document.getElementById('notation')!;
   notation.innerHTML = svg;
 
   // Build timing events from the source note data (not from SVG)
   buildTimingEvents();
+}
 
+// Note ID mapping: maps time (in beats) to SVG element IDs
+// Built by parsing MEI after Verovio converts our MusicXML
+let currentNoteIdMapping: NoteIdMapping = { timeToIds: new Map() };
+
+/**
+ * Parse MEI XML to extract note IDs and their timing.
+ * Verovio generates IDs when converting MusicXML → MEI, and preserves them in SVG.
+ */
+function buildMeiIdMapping(meiString: string) {
+  const timeToIds = new Map<number, string[]>();
+  const roundTime = (t: number) => Math.round(t * 1000) / 1000;
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(meiString, 'text/xml');
+
+  // MEI uses namespaces
+  const ns = 'http://www.music-encoding.org/ns/mei';
+
+  // Helper to calculate duration in beats from MEI @dur attribute
+  // MEI dur: 1=whole, 2=half, 4=quarter, 8=eighth, etc.
+  // Also handles dotted notes with @dots attribute
+  const getDurationInBeats = (el: Element): number => {
+    const dur = el.getAttribute('dur');
+    if (!dur) return 0;
+    const durNum = parseInt(dur, 10);
+    let duration = 4 / durNum; // 4/1 = 4 beats (whole), 4/4 = 1 beat (quarter), etc.
+
+    // Handle dotted notes
+    const dots = el.getAttribute('dots');
+    if (dots) {
+      const numDots = parseInt(dots, 10);
+      let dotValue = duration / 2;
+      for (let i = 0; i < numDots; i++) {
+        duration += dotValue;
+        dotValue /= 2;
+      }
+    }
+    return duration;
+  };
+
+  // Helper to process a note/rest/chord element and add to mapping
+  // Returns the duration consumed by this element
+  const processElement = (el: Element, time: number): number => {
+    if (el.localName === 'note' || el.localName === 'rest') {
+      const id = el.getAttribute('xml:id');
+      if (id) {
+        const key = roundTime(time);
+        const existing = timeToIds.get(key) || [];
+        existing.push(id);
+        timeToIds.set(key, existing);
+      }
+      return getDurationInBeats(el);
+    } else if (el.localName === 'chord') {
+      // Chord: all notes share same time
+      const chordNotes = el.getElementsByTagNameNS(ns, 'note');
+      for (const note of chordNotes) {
+        const noteId = note.getAttribute('xml:id');
+        if (noteId) {
+          const key = roundTime(time);
+          const existing = timeToIds.get(key) || [];
+          existing.push(noteId);
+          timeToIds.set(key, existing);
+        }
+      }
+      return getDurationInBeats(el);
+    } else if (el.localName === 'beam') {
+      // Beam: process all children (notes/chords) sequentially
+      let beamTime = 0;
+      for (const child of el.children) {
+        const duration = processElement(child, time + beamTime);
+        beamTime += duration;
+      }
+      return beamTime;
+    } else if (el.localName === 'tuplet') {
+      // Tuplet: process children, but timing is adjusted
+      // For now, just process children sequentially
+      let tupletTime = 0;
+      for (const child of el.children) {
+        const duration = processElement(child, time + tupletTime);
+        tupletTime += duration;
+      }
+      return tupletTime;
+    }
+    return 0;
+  };
+
+  // MEI structure: <section> → <measure> → <staff> → <layer> → notes
+  // We need to iterate through measures to track time across the piece
+  const measures = doc.getElementsByTagNameNS(ns, 'measure');
+
+  // Track cumulative time for each staff (1 = treble/RH, 2 = bass/LH)
+  const staffTimeOffsets = new Map<string, number>();
+
+  for (const measure of measures) {
+    // Process each staff within this measure
+    const staves = measure.getElementsByTagNameNS(ns, 'staff');
+
+    for (const staff of staves) {
+      const staffN = staff.getAttribute('n') || '1';
+
+      // Get the starting time for this staff in this measure
+      const measureStartTime = staffTimeOffsets.get(staffN) || 0;
+      let maxTimeInMeasure = 0;
+
+      // Process each layer within the staff
+      const layers = staff.getElementsByTagNameNS(ns, 'layer');
+      for (const layer of layers) {
+        let layerTime = 0; // Time within this layer (relative to measure start)
+
+        for (const el of layer.children) {
+          const duration = processElement(el, measureStartTime + layerTime);
+          layerTime += duration;
+        }
+
+        // Track the maximum time used in any layer
+        maxTimeInMeasure = Math.max(maxTimeInMeasure, layerTime);
+      }
+
+      // Update the staff's time offset for the next measure
+      staffTimeOffsets.set(staffN, measureStartTime + maxTimeInMeasure);
+    }
+  }
+
+  currentNoteIdMapping = { timeToIds };
 }
 
 // Build timing events from the generated note data
@@ -399,11 +554,6 @@ function buildTimingEvents() {
     const duration = nextTime - time;
     timingEvents.push({ time, duration, pitches: eventData.pitches });
   }
-
-  // Debug: log timing events with pitches
-  console.log('Timing events built:', timingEvents.map((e, i) =>
-    `${i}: t=${e.time.toFixed(2)} d=${e.duration.toFixed(2)} [${e.pitches.join(', ')}]`
-  ));
 }
 
 function updateLevelDisplay() {
@@ -589,6 +739,7 @@ function checkNoteMatch(playedNote: string) {
       if (basePitch === playedBase && octave === playedOctave) {
         el.classList.add('correct');
         el.classList.remove('wrong');
+        notesPlayed++; // Track that user played this note correctly
         break; // Only mark one element per played note
       }
     }
@@ -601,29 +752,26 @@ function checkNoteMatch(playedNote: string) {
     const upcomingMatched = upcomingEvent.pitches.some(p => normalizeNote(p) === normalizedPlayed);
 
     if (upcomingMatched) {
-      // Find the upcoming note elements
-      const upcomingTimeMs = upcomingEvent.time * 500;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const upcomingElements = (toolkit as any).getElementsAtTime(upcomingTimeMs) as { notes?: string[]; page?: number } | undefined;
+      // Find the upcoming note elements using our embedded ID mapping
+      const roundTime = (t: number) => Math.round(t * 1000) / 1000;
+      const upcomingNoteIds = currentNoteIdMapping.timeToIds.get(roundTime(upcomingEvent.time)) || [];
 
-      if (upcomingElements && upcomingElements.notes) {
-        for (const noteId of upcomingElements.notes) {
-          const el = document.getElementById(noteId);
-          if (!el || !el.classList.contains('note')) continue;
+      for (const noteId of upcomingNoteIds) {
+        const el = document.getElementById(noteId);
+        if (!el || !el.classList.contains('note')) continue;
 
-          const elemData = toolkit.getElementAttr(noteId);
-          if (!elemData || !elemData.pname || !elemData.oct) continue;
+        const elemData = toolkit.getElementAttr(noteId);
+        if (!elemData || !elemData.pname || !elemData.oct) continue;
 
-          const basePitch = (elemData.pname as string).toUpperCase();
-          const octave = elemData.oct;
-          const playedBase = normalizedPlayed.charAt(0);
-          const playedOctave = normalizedPlayed.slice(-1);
+        const basePitch = (elemData.pname as string).toUpperCase();
+        const octave = elemData.oct;
+        const playedBase = normalizedPlayed.charAt(0);
+        const playedOctave = normalizedPlayed.slice(-1);
 
-          if (basePitch === playedBase && octave === playedOctave) {
-            el.setAttribute('data-early-correct', 'true');
-            matchedUpcoming = true;
-            break;
-          }
+        if (basePitch === playedBase && octave === playedOctave) {
+          el.setAttribute('data-early-correct', 'true');
+          matchedUpcoming = true;
+          break;
         }
       }
     }
@@ -739,6 +887,10 @@ function setupControls() {
       const newLevel = parseInt(levelJumpSelect.value);
       if (newLevel >= 1) {
         if (isPlaying) stop();
+        // Exit practice mode if we're in it
+        if (currentMode === 'practice') {
+          exitPracticeMode();
+        }
         setLevel(newLevel);
         setSubLevel(0);
         generateAndRender();
@@ -825,6 +977,15 @@ function setupControls() {
   exitPracticeModeBtn?.addEventListener('click', () => {
     if (isPlaying) stop();
     exitPracticeMode();
+  });
+
+  // Practice progress bar drag
+  setupProgressBarDrag();
+
+  // Click celebration overlay to dismiss
+  const celebrationOverlay = document.getElementById('celebrationOverlay');
+  celebrationOverlay?.addEventListener('click', () => {
+    hideCelebration();
   });
 
   // Built-in song selector
@@ -918,6 +1079,9 @@ async function start() {
 
   currentBeatIndex = 0;
   hadMistake = false;
+  notesPlayed = 0;
+  // Calculate required notes (count non-rest pitches in timing events)
+  notesRequired = timingEvents.reduce((sum, evt) => sum + evt.pitches.length, 0);
 
   // Fully reset Tone.js Transport before scheduling
   const transport = Tone.getTransport();
@@ -1026,16 +1190,11 @@ function onPieceComplete() {
   });
 
   // Handle differently based on mode
-  if (currentMode === 'practice') {
-    // Practice mode: always loop the current step
-    // User can use level up/down buttons to advance manually
-    hadMistake = false;
-    currentBeatIndex = 0;
-
-    // Reset visual highlighting (same music, just loop)
+  if (currentMode === 'practice' && practiceSession) {
+    // Reset visual highlighting
     resetVisualHighlighting();
 
-    // Reset transport and replay WITHOUT countoff
+    // Reset transport
     Tone.getTransport().stop();
     Tone.getTransport().cancel();
     scheduledEvents = [];
@@ -1043,11 +1202,52 @@ function onPieceComplete() {
     lastMetronomeTime = 0;
     lastAdvanceBeatTime = 0;
 
-    // No countoff on loop - start music immediately
-    isCountingOff = false;
-    countoffBeats = 0;
-    scheduleMusic(0); // 0 = no countoff
-    Tone.getTransport().start();
+    // Auto-advance if:
+    // 1. No mistakes AND
+    // 2. User actually played at least 80% of notes (prevents advancing without playing)
+    const playedEnough = notesRequired === 0 || notesPlayed >= notesRequired * 0.8;
+    if (!hadMistake && playedEnough) {
+      // Advance to next step
+      const hasMore = practiceSession.nextStep();
+
+      if (hasMore) {
+        renderPracticeStep();
+
+        // Save progress
+        savePracticeState();
+
+        // Continue playing with countoff for new segment
+        hadMistake = false;
+        notesPlayed = 0;
+        // Recalculate required notes for the new segment
+        notesRequired = timingEvents.reduce((sum, evt) => sum + evt.pitches.length, 0);
+        currentBeatIndex = 0;
+        isCountingOff = true;
+        countoffBeats = 0;
+        const countoffTotal = currentTimeSig.beats;
+        scheduleMusic(countoffTotal);
+        Tone.getTransport().start();
+      } else {
+        // Practice complete - show celebration!
+        stop();
+        showCelebration();
+        const progressInfo = document.getElementById('progressInfo');
+        if (progressInfo) {
+          progressInfo.textContent = 'Complete! Use ← to review.';
+        }
+      }
+    } else {
+      // Had mistakes or didn't play enough - loop the current segment
+      // Give countoff for 4+ bars to help re-orient
+      hadMistake = false;
+      notesPlayed = 0; // Reset for retry
+      currentBeatIndex = 0;
+      const needsCountoff = currentMeasureCount >= 4;
+      isCountingOff = needsCountoff;
+      countoffBeats = 0;
+      scheduleMusic(needsCountoff ? currentTimeSig.beats : 0);
+      Tone.getTransport().start();
+    }
   } else {
     // Level mode: advance level if no mistakes
     if (!hadMistake) {
@@ -1141,26 +1341,21 @@ function advanceBeat() {
 
   const timingEvent = timingEvents[currentBeatIndex];
 
-  // Use Verovio's getElementsAtTime to find which notes to highlight
-  // Verovio defaults to 120 BPM when no tempo is specified in MusicXML
-  // At 120 BPM: 1 quarter note = 500ms
-  const VEROVIO_MS_PER_BEAT = 500;
-  const timeInMs = timingEvent.time * VEROVIO_MS_PER_BEAT;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const elementsAtTime = (toolkit as any).getElementsAtTime(timeInMs) as { notes?: string[]; page?: number } | undefined;
+  // Look up note IDs from the mapping built when generating MusicXML
+  // This uses embedded xml:id attributes, which is more reliable than position-based or time-based lookups
+  const roundTime = (t: number) => Math.round(t * 1000) / 1000;
+  const noteIds = currentNoteIdMapping.timeToIds.get(roundTime(timingEvent.time)) || [];
 
-  // Highlight notes returned by Verovio
-  if (elementsAtTime && elementsAtTime.notes) {
-    for (const noteId of elementsAtTime.notes) {
-      const noteEl = document.getElementById(noteId);
-      if (noteEl) {
-        noteEl.classList.add('current');
+  // Highlight notes from our embedded ID mapping
+  for (const noteId of noteIds) {
+    const noteEl = document.getElementById(noteId);
+    if (noteEl) {
+      noteEl.classList.add('current');
 
-        // Check if this note was played early
-        if (noteEl.getAttribute('data-early-correct') === 'true') {
-          noteEl.classList.add('correct');
-          noteEl.removeAttribute('data-early-correct');
-        }
+      // Check if this note was played early
+      if (noteEl.getAttribute('data-early-correct') === 'true') {
+        noteEl.classList.add('correct');
+        noteEl.removeAttribute('data-early-correct');
       }
     }
   }
@@ -1173,10 +1368,6 @@ function advanceBeat() {
       sampler.triggerAttackRelease(pitch, '2n');
     }
   }
-
-  // Debug: log what we're playing
-  const noteIds = elementsAtTime?.notes?.join(', ') ?? 'none';
-  console.log(`Beat ${currentBeatIndex}: playing [${pitchesPlayed.join(', ')}] | time: ${timingEvent.time.toFixed(2)} | Verovio notes: [${noteIds}]`);
 
   currentBeatIndex++;
 }
@@ -1206,19 +1397,6 @@ async function handleFileUpload(file: File) {
     const xmlString = await file.text();
     const parsed = parseMusicXML(xmlString);
 
-    // Debug: log parsed structure
-    console.log('Parsed MusicXML:', {
-      title: parsed.title,
-      measureCount: parsed.measures.length,
-      timeSignature: parsed.timeSignature,
-      keySignature: parsed.keySignature,
-      measures: parsed.measures.map((m) => ({
-        number: m.number,
-        rhNotes: m.rightHand.length,
-        lhNotes: m.leftHand.length
-      })).slice(0, 5) // Just first 5 measures for brevity
-    });
-
     if (parsed.measures.length === 0) {
       alert('No measures found in the uploaded file.');
       return;
@@ -1227,6 +1405,10 @@ async function handleFileUpload(file: File) {
     // Create practice session
     practiceSession = new ProgressivePracticeSession(parsed);
     currentMode = 'practice';
+    currentPracticeSongId = null; // Not a built-in song
+
+    // Save the uploaded music for persistence
+    savePracticeMusic(xmlString);
 
     // Update BPM to something reasonable for practice
     bpm = 60;
@@ -1238,6 +1420,9 @@ async function handleFileUpload(file: File) {
 
     // Render first step
     renderPracticeStep();
+
+    // Save practice state
+    savePracticeState();
   } catch (error) {
     console.error('Error parsing MusicXML:', error);
     alert('Error parsing file. Please ensure it is a valid MusicXML file.');
@@ -1265,6 +1450,7 @@ function loadBuiltInSong(songId: string) {
     // Create practice session
     practiceSession = new ProgressivePracticeSession(parsed);
     currentMode = 'practice';
+    currentPracticeSongId = songId; // Track which song for persistence
 
     // Set appropriate BPM based on difficulty
     const difficultyBpm = {
@@ -1281,6 +1467,9 @@ function loadBuiltInSong(songId: string) {
 
     // Render first step
     renderPracticeStep();
+
+    // Save practice state
+    savePracticeState();
 
     // Close options panel if open
     const optionsPanel = document.getElementById('optionsPanel');
@@ -1336,6 +1525,10 @@ function enterPracticeMode() {
 function exitPracticeMode() {
   currentMode = 'levels';
   practiceSession = null;
+  currentPracticeSongId = null;
+
+  // Clear saved practice state
+  clearPracticeState();
 
   // Restore header
   const scoreTitle = document.querySelector('.score-title h1');
@@ -1373,6 +1566,8 @@ function updatePracticeDisplay() {
 
   const segment = practiceSession.getCurrentSegment();
   const progress = practiceSession.getProgress();
+  const allSteps = practiceSession.getAllSteps();
+  const currentIndex = practiceSession.getCurrentStepIndex();
 
   // Step type
   const stepTypeEl = document.getElementById('practiceStepType');
@@ -1387,17 +1582,191 @@ function updatePracticeDisplay() {
     stepDescEl.textContent = segment.description;
   }
 
-  // Step number
+  // Step number text
   const stepNumEl = document.getElementById('practiceStepNum');
   if (stepNumEl) {
     stepNumEl.textContent = `Step ${progress.currentStep} of ${progress.totalSteps}`;
   }
 
-  // Progress bar
+  // Calculate percentage based on step index (not mastery)
+  const stepPercent = allSteps.length > 1
+    ? (currentIndex / (allSteps.length - 1)) * 100
+    : 0;
+
+  // Progress bar fill
   const progressBar = document.getElementById('practiceProgressBar');
   if (progressBar) {
-    progressBar.style.width = `${progress.percent}%`;
+    progressBar.style.width = `${stepPercent}%`;
   }
+
+  // Progress thumb position
+  const progressThumb = document.getElementById('practiceProgressThumb');
+  if (progressThumb) {
+    progressThumb.style.left = `${stepPercent}%`;
+  }
+
+  // Update ARIA attributes
+  const container = document.getElementById('practiceProgressContainer');
+  if (container) {
+    container.setAttribute('aria-valuenow', String(Math.round(stepPercent)));
+    container.setAttribute('aria-valuetext', `Step ${progress.currentStep} of ${progress.totalSteps}: ${segment.description}`);
+  }
+}
+
+/**
+ * Setup drag functionality for the practice progress bar.
+ * Shows a preview tooltip while dragging, renders music only on release.
+ */
+function setupProgressBarDrag() {
+  const container = document.getElementById('practiceProgressContainer');
+  const preview = document.getElementById('progressPreview');
+  const progressBar = document.getElementById('practiceProgressBar');
+  const progressThumb = document.getElementById('practiceProgressThumb');
+  if (!container) return;
+
+  let isDragging = false;
+  let previewStepIndex = 0;
+
+  const getStepFromPosition = (clientX: number): number => {
+    if (!practiceSession) return 0;
+
+    const rect = container.getBoundingClientRect();
+    const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
+    const percent = x / rect.width;
+    const allSteps = practiceSession.getAllSteps();
+    const stepIndex = Math.round(percent * (allSteps.length - 1));
+    return Math.max(0, Math.min(stepIndex, allSteps.length - 1));
+  };
+
+  const showPreview = (stepIndex: number, clientX: number, clientY: number) => {
+    if (!practiceSession || !preview) return;
+
+    previewStepIndex = stepIndex;
+    const allSteps = practiceSession.getAllSteps();
+    const step = allSteps[stepIndex];
+
+    // Update preview content
+    const stepTypeEl = document.getElementById('progressPreviewStep');
+    const descEl = document.getElementById('progressPreviewDesc');
+    const numEl = document.getElementById('progressPreviewNum');
+
+    if (stepTypeEl) stepTypeEl.textContent = getStepTypeLabel(step.type);
+    if (descEl) descEl.textContent = getStepDescription(step);
+    if (numEl) numEl.textContent = `Step ${stepIndex + 1} of ${allSteps.length}`;
+
+    // Position preview above the cursor
+    const previewRect = preview.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    let left = clientX - previewRect.width / 2;
+    // Keep within viewport
+    left = Math.max(10, Math.min(left, viewportWidth - previewRect.width - 10));
+    preview.style.left = `${left}px`;
+    preview.style.top = `${clientY - previewRect.height - 20}px`;
+
+    preview.classList.add('visible');
+
+    // Update progress bar visual without rendering music
+    const stepPercent = allSteps.length > 1
+      ? (stepIndex / (allSteps.length - 1)) * 100
+      : 0;
+    if (progressBar) progressBar.style.width = `${stepPercent}%`;
+    if (progressThumb) progressThumb.style.left = `${stepPercent}%`;
+  };
+
+  const hidePreview = () => {
+    if (preview) {
+      preview.classList.remove('visible');
+    }
+  };
+
+  const jumpToStep = (stepIndex: number) => {
+    if (!practiceSession) return;
+    if (isPlaying) stop();
+    practiceSession.goToStep(stepIndex);
+    renderPracticeStep();
+    savePracticeState();
+  };
+
+  // Mouse events
+  container.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    container.classList.add('dragging');
+    const stepIndex = getStepFromPosition(e.clientX);
+    showPreview(stepIndex, e.clientX, e.clientY);
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const stepIndex = getStepFromPosition(e.clientX);
+    showPreview(stepIndex, e.clientX, e.clientY);
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      container.classList.remove('dragging');
+      hidePreview();
+      // Now actually render the step
+      jumpToStep(previewStepIndex);
+    }
+  });
+
+  // Touch events
+  container.addEventListener('touchstart', (e) => {
+    isDragging = true;
+    container.classList.add('dragging');
+    if (e.touches.length > 0) {
+      const touch = e.touches[0];
+      const stepIndex = getStepFromPosition(touch.clientX);
+      showPreview(stepIndex, touch.clientX, touch.clientY);
+    }
+    e.preventDefault();
+  }, { passive: false });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!isDragging || e.touches.length === 0) return;
+    const touch = e.touches[0];
+    const stepIndex = getStepFromPosition(touch.clientX);
+    showPreview(stepIndex, touch.clientX, touch.clientY);
+  });
+
+  document.addEventListener('touchend', () => {
+    if (isDragging) {
+      isDragging = false;
+      container.classList.remove('dragging');
+      hidePreview();
+      // Now actually render the step
+      jumpToStep(previewStepIndex);
+    }
+  });
+
+  // Keyboard navigation (immediate, no preview needed)
+  container.addEventListener('keydown', (e) => {
+    if (!practiceSession) return;
+    const currentIndex = practiceSession.getCurrentStepIndex();
+    const allSteps = practiceSession.getAllSteps();
+
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (currentIndex < allSteps.length - 1) {
+        jumpToStep(currentIndex + 1);
+      }
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (currentIndex > 0) {
+        jumpToStep(currentIndex - 1);
+      }
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      jumpToStep(0);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      jumpToStep(allSteps.length - 1);
+    }
+  });
+
+  // Note: Click is handled via mousedown+mouseup, no separate click handler needed
 }
 
 /**
@@ -1406,43 +1775,193 @@ function updatePracticeDisplay() {
 function renderPracticeStep() {
   if (!practiceSession) return;
 
+  const step = practiceSession.getCurrentStep();
   const segment = practiceSession.getCurrentSegment();
   const timeSig = practiceSession.getTimeSignature();
   const keySig = practiceSession.getKeySignature();
 
-  // Update current notes
+  // Update current notes and measure count
   currentRightHandNotes = segment.rightHand;
   currentLeftHandNotes = segment.leftHand;
   currentTimeSig = timeSig;
-
-  // Debug: log parsed notes
-  console.log('Practice step notes:', {
-    rightHand: segment.rightHand.map(n => ({
-      note: n.isRest ? 'REST' : `${n.step}${n.alter ? (n.alter > 0 ? '#' : 'b') : ''}${n.octave}`,
-      duration: n.duration
-    })),
-    leftHand: segment.leftHand.map(n => ({
-      note: n.isRest ? 'REST' : `${n.step}${n.alter ? (n.alter > 0 ? '#' : 'b') : ''}${n.octave}`,
-      duration: n.duration
-    })),
-    timeSig,
-    keySig: keySig.name
-  });
+  currentMeasureCount = step.measures.length;
 
   // Build MusicXML for this segment
-  currentPieceXml = buildMusicXML(
+  // Add system breaks every 4 measures if there are more than 4
+  const result = buildMusicXML(
     segment.rightHand,
     segment.leftHand,
     {
       timeSignature: timeSig,
       key: keySig,
+      systemBreakEvery: currentMeasureCount > 4 ? 4 : 0,
     }
   );
+  currentPieceXml = result.xml;
+  currentNoteIdMapping = result.noteIdMapping;
+
+  // Update Verovio options based on measure count (for line breaks)
+  updateVerovioOptions();
 
   // Render
   renderCurrentMusic();
   updatePracticeDisplay();
 }
+
+// ============================================
+// CELEBRATION
+// ============================================
+
+/**
+ * Show the celebration overlay with sparkles.
+ */
+function showCelebration() {
+  const overlay = document.getElementById('celebrationOverlay');
+  if (!overlay) return;
+
+  // Add dynamic sparkles
+  const sparkles = overlay.querySelector('.celebration-sparkles');
+  if (sparkles) {
+    // Clear any existing particles
+    sparkles.querySelectorAll('.particle').forEach(p => p.remove());
+
+    // Add random sparkle particles
+    for (let i = 0; i < 12; i++) {
+      const particle = document.createElement('div');
+      particle.className = 'particle';
+      particle.style.cssText = `
+        top: ${Math.random() * 100}%;
+        left: ${Math.random() * 100}%;
+        animation-delay: ${Math.random() * 1.5}s;
+        background: ${Math.random() > 0.5 ? 'var(--current)' : 'var(--accent-light)'};
+      `;
+      sparkles.appendChild(particle);
+    }
+  }
+
+  overlay.hidden = false;
+
+  // Auto-hide after a few seconds
+  setTimeout(() => {
+    hideCelebration();
+  }, 3000);
+}
+
+/**
+ * Hide the celebration overlay.
+ */
+function hideCelebration() {
+  const overlay = document.getElementById('celebrationOverlay');
+  if (overlay) {
+    overlay.hidden = true;
+  }
+}
+
+// ============================================
+// PRACTICE STATE PERSISTENCE
+// ============================================
+
+const PRACTICE_STATE_KEY = 'practiceState';
+const PRACTICE_MUSIC_KEY = 'practiceMusic';
+
+interface PracticeStateData {
+  type: 'song' | 'upload';
+  songId?: string;
+  stepIndex: number;
+  bpm: number;
+}
+
+/**
+ * Save current practice state to localStorage.
+ */
+function savePracticeState() {
+  if (!practiceSession || currentMode !== 'practice') {
+    localStorage.removeItem(PRACTICE_STATE_KEY);
+    return;
+  }
+
+  const state: PracticeStateData = {
+    type: currentPracticeSongId ? 'song' : 'upload',
+    songId: currentPracticeSongId || undefined,
+    stepIndex: practiceSession.getCurrentStepIndex(),
+    bpm: bpm,
+  };
+
+  localStorage.setItem(PRACTICE_STATE_KEY, JSON.stringify(state));
+}
+
+/**
+ * Save uploaded MusicXML content to localStorage.
+ */
+function savePracticeMusic(xmlContent: string) {
+  localStorage.setItem(PRACTICE_MUSIC_KEY, xmlContent);
+}
+
+/**
+ * Load saved practice state on startup.
+ */
+function loadPracticeState(): boolean {
+  const stateJson = localStorage.getItem(PRACTICE_STATE_KEY);
+  if (!stateJson) return false;
+
+  try {
+    const state: PracticeStateData = JSON.parse(stateJson);
+
+    if (state.type === 'song' && state.songId) {
+      // Load built-in song
+      const song = getSongById(state.songId);
+      if (!song) return false;
+
+      const parsed = parseMusicXML(song.xml);
+      if (parsed.measures.length === 0) return false;
+
+      practiceSession = new ProgressivePracticeSession(parsed);
+      currentPracticeSongId = state.songId;
+    } else if (state.type === 'upload') {
+      // Load cached uploaded music
+      const cachedXml = localStorage.getItem(PRACTICE_MUSIC_KEY);
+      if (!cachedXml) return false;
+
+      const parsed = parseMusicXML(cachedXml);
+      if (parsed.measures.length === 0) return false;
+
+      practiceSession = new ProgressivePracticeSession(parsed);
+      currentPracticeSongId = null;
+    } else {
+      return false;
+    }
+
+    // Restore step position
+    practiceSession.goToStep(state.stepIndex);
+
+    // Restore BPM
+    bpm = state.bpm;
+    const bpmInput = document.getElementById('bpm') as HTMLInputElement;
+    if (bpmInput) bpmInput.value = String(bpm);
+
+    // Enter practice mode
+    currentMode = 'practice';
+    enterPracticeMode();
+    renderPracticeStep();
+
+    return true;
+  } catch (e) {
+    console.error('Error loading practice state:', e);
+    localStorage.removeItem(PRACTICE_STATE_KEY);
+    return false;
+  }
+}
+
+/**
+ * Clear saved practice state.
+ */
+function clearPracticeState() {
+  localStorage.removeItem(PRACTICE_STATE_KEY);
+  localStorage.removeItem(PRACTICE_MUSIC_KEY);
+}
+
+// Track current song ID for persistence
+let currentPracticeSongId: string | null = null;
 
 
 // Start the app
