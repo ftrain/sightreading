@@ -26,6 +26,7 @@
     "vitest": "^4.0.15"
   },
   "dependencies": {
+    "jszip": "^3.10.1",
     "tonal": "^6.4.2",
     "tone": "^15.1.22",
     "verovio": "^5.7.0"

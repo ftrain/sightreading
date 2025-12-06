@@ -2,6 +2,7 @@ import './style.css';
 import createVerovioModule from 'verovio/wasm';
 import { VerovioToolkit } from 'verovio/esm';
 import * as Tone from 'tone';
+import JSZip from 'jszip';
 import {
   generateMusicXML,
   regenerateXMLFromNotes,
@@ -1390,11 +1391,57 @@ function noteDataToPitch(note: NoteData): string | null {
 // ============================================
 
 /**
+ * Extract MusicXML content from an MXL (compressed) file.
+ * MXL files are ZIP archives containing the XML and a manifest.
+ */
+async function extractMxlContent(file: File): Promise<string> {
+  const zip = await JSZip.loadAsync(file);
+
+  // MXL files contain a META-INF/container.xml that points to the main XML file
+  // Or we can look for common names like *.xml files
+  const containerFile = zip.file('META-INF/container.xml');
+
+  if (containerFile) {
+    // Parse container.xml to find the rootfile
+    const containerXml = await containerFile.async('string');
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(containerXml, 'text/xml');
+    const rootfileEl = doc.querySelector('rootfile');
+    const fullPath = rootfileEl?.getAttribute('full-path');
+
+    if (fullPath) {
+      const mainFile = zip.file(fullPath);
+      if (mainFile) {
+        return await mainFile.async('string');
+      }
+    }
+  }
+
+  // Fallback: look for any .xml file that's not in META-INF
+  for (const [path, zipEntry] of Object.entries(zip.files)) {
+    if (path.endsWith('.xml') && !path.startsWith('META-INF/') && !zipEntry.dir) {
+      return await zipEntry.async('string');
+    }
+  }
+
+  throw new Error('No MusicXML content found in MXL file');
+}
+
+/**
  * Handle file upload and enter practice mode.
+ * Supports both plain XML (.xml, .musicxml) and compressed MXL (.mxl) files.
  */
 async function handleFileUpload(file: File) {
   try {
-    const xmlString = await file.text();
+    let xmlString: string;
+
+    // Check if this is an MXL (compressed) file
+    if (file.name.toLowerCase().endsWith('.mxl')) {
+      xmlString = await extractMxlContent(file);
+    } else {
+      xmlString = await file.text();
+    }
+
     const parsed = parseMusicXML(xmlString);
 
     if (parsed.measures.length === 0) {
@@ -1425,7 +1472,7 @@ async function handleFileUpload(file: File) {
     savePracticeState();
   } catch (error) {
     console.error('Error parsing MusicXML:', error);
-    alert('Error parsing file. Please ensure it is a valid MusicXML file.');
+    alert('Error parsing file. Please ensure it is a valid MusicXML or MXL file.');
   }
 }
 
