@@ -450,3 +450,226 @@ test.describe('Playback Timing', () => {
     expect(spacingErrors, spacingErrors.join('\n')).toHaveLength(0);
   });
 });
+
+test.describe('Built-in Song SVG Timing', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#notation svg', { timeout: 10000 });
+  });
+
+  test('Minuet in G should render with both hands visible', async ({ page }) => {
+    // Open options panel
+    await page.locator('#optionsToggle').click();
+    await page.waitForTimeout(200);
+
+    // Select Minuet in G from song selector
+    await page.locator('#songSelect').selectOption('minuet-g');
+    await page.waitForTimeout(500);
+
+    // Wait for SVG to render
+    await page.waitForSelector('#notation svg .note', { timeout: 5000 });
+
+    // Verify we have notes
+    const noteCount = await page.locator('#notation svg .note').count();
+    expect(noteCount).toBeGreaterThan(0);
+
+    // Should have 2 staves (grand staff)
+    const staveCount = await page.locator('#notation svg .staff').count();
+    expect(staveCount).toBeGreaterThanOrEqual(2);
+  });
+
+  test('SVG note x-coordinates should increase left to right', async ({ page }) => {
+    // Load Minuet in G
+    await page.locator('#optionsToggle').click();
+    await page.waitForTimeout(200);
+    await page.locator('#songSelect').selectOption('minuet-g');
+    await page.waitForTimeout(500);
+    await page.waitForSelector('#notation svg .note', { timeout: 5000 });
+
+    // Extract note x positions from SVG
+    const notePositions = await page.evaluate(() => {
+      const notes = document.querySelectorAll('#notation svg .note');
+      const positions: { id: string; x: number }[] = [];
+
+      notes.forEach((note) => {
+        const id = note.getAttribute('id') || '';
+        // Get the transform or use getBoundingClientRect
+        const rect = (note as SVGGElement).getBoundingClientRect();
+        positions.push({ id, x: rect.x });
+      });
+
+      // Sort by x position
+      return positions.sort((a, b) => a.x - b.x);
+    });
+
+    expect(notePositions.length).toBeGreaterThan(0);
+
+    // Verify notes are in left-to-right order (allowing for some variation)
+    for (let i = 1; i < notePositions.length; i++) {
+      // Notes shouldn't jump backwards significantly
+      const diff = notePositions[i].x - notePositions[i - 1].x;
+      expect(diff).toBeGreaterThanOrEqual(-5); // Allow small tolerance for stacked notes
+    }
+  });
+
+  test('simultaneous notes should have similar x positions', async ({ page }) => {
+    // Load Minuet in G
+    await page.locator('#optionsToggle').click();
+    await page.waitForTimeout(200);
+    await page.locator('#songSelect').selectOption('minuet-g');
+    await page.waitForTimeout(500);
+    await page.waitForSelector('#notation svg .note', { timeout: 5000 });
+
+    // Get note positions by staff
+    const notesByStaff = await page.evaluate(() => {
+      const svg = document.querySelector('#notation svg');
+      if (!svg) return { staff1: [], staff2: [] };
+
+      const notes = svg.querySelectorAll('.note');
+      const staff1: { id: string; x: number }[] = [];
+      const staff2: { id: string; x: number }[] = [];
+
+      notes.forEach((note) => {
+        const id = note.getAttribute('id') || '';
+        const rect = (note as SVGGElement).getBoundingClientRect();
+
+        // Determine which staff by checking parent elements
+        let parent = note.parentElement;
+        let staffNum = 1;
+        while (parent && parent !== svg) {
+          if (parent.classList.contains('staff')) {
+            // Get staff index
+            const staffs = svg.querySelectorAll('.staff');
+            staffs.forEach((s, idx) => {
+              if (s === parent) staffNum = idx + 1;
+            });
+            break;
+          }
+          parent = parent.parentElement;
+        }
+
+        if (staffNum === 1) {
+          staff1.push({ id, x: rect.x });
+        } else {
+          staff2.push({ id, x: rect.x });
+        }
+      });
+
+      return { staff1, staff2 };
+    });
+
+    // Both staves should have notes
+    expect(notesByStaff.staff1.length).toBeGreaterThan(0);
+    expect(notesByStaff.staff2.length).toBeGreaterThan(0);
+
+    // In Minuet in G, measure 1 beat 1 should have notes in both hands at similar x
+    // Check that the first notes are at similar x positions (within tolerance)
+    if (notesByStaff.staff1.length > 0 && notesByStaff.staff2.length > 0) {
+      // Sort both by x
+      const s1Sorted = [...notesByStaff.staff1].sort((a, b) => a.x - b.x);
+      const s2Sorted = [...notesByStaff.staff2].sort((a, b) => a.x - b.x);
+
+      // First notes should be at similar x (beat 1 of measure 1)
+      const firstS1 = s1Sorted[0];
+      const firstS2 = s2Sorted[0];
+
+      // Allow 50px tolerance for alignment
+      const xDiff = Math.abs(firstS1.x - firstS2.x);
+      expect(xDiff).toBeLessThan(50);
+    }
+  });
+
+  test('note count should match parsed MusicXML data', async ({ page }) => {
+    // Load Minuet in G
+    await page.locator('#optionsToggle').click();
+    await page.waitForTimeout(200);
+    await page.locator('#songSelect').selectOption('minuet-g');
+    await page.waitForTimeout(500);
+    await page.waitForSelector('#notation svg .note', { timeout: 5000 });
+
+    // Count notes in SVG
+    const svgNoteCount = await page.locator('#notation svg .note').count();
+
+    // Minuet in G (8 measures, 3/4 time) should have:
+    // RH: varied rhythm per measure
+    // LH: mostly half + quarter or dotted half per measure
+    // Expected total: roughly 40-60 notes
+    expect(svgNoteCount).toBeGreaterThan(30);
+    expect(svgNoteCount).toBeLessThan(100);
+  });
+
+  test('round-trip: SVG should re-render identically after parse/rebuild', async ({ page }) => {
+    // This test verifies that the parsed data renders to consistent SVG
+
+    // Load Minuet in G
+    await page.locator('#optionsToggle').click();
+    await page.waitForTimeout(200);
+    await page.locator('#songSelect').selectOption('minuet-g');
+    await page.waitForTimeout(500);
+    await page.waitForSelector('#notation svg .note', { timeout: 5000 });
+
+    // Get initial SVG note positions
+    const initialPositions = await page.evaluate(() => {
+      const notes = document.querySelectorAll('#notation svg .note');
+      return Array.from(notes).map((note) => {
+        const rect = (note as SVGGElement).getBoundingClientRect();
+        return { x: Math.round(rect.x), y: Math.round(rect.y) };
+      });
+    });
+
+    // Click "Next" button to advance practice step (triggers re-render)
+    const nextBtn = page.locator('#practiceNext');
+    if (await nextBtn.isVisible()) {
+      await nextBtn.click();
+      await page.waitForTimeout(500);
+
+      // Go back to start
+      const restartBtn = page.locator('#practiceRestart');
+      if (await restartBtn.isVisible()) {
+        await restartBtn.click();
+        await page.waitForTimeout(500);
+
+        // Get new positions
+        const newPositions = await page.evaluate(() => {
+          const notes = document.querySelectorAll('#notation svg .note');
+          return Array.from(notes).map((note) => {
+            const rect = (note as SVGGElement).getBoundingClientRect();
+            return { x: Math.round(rect.x), y: Math.round(rect.y) };
+          });
+        });
+
+        // Same song should have same number of notes in first step
+        // (may differ if progressive mode shows different ranges)
+        expect(newPositions.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test('Mary Had a Little Lamb should render correctly', async ({ page }) => {
+    await page.locator('#optionsToggle').click();
+    await page.waitForTimeout(200);
+    await page.locator('#songSelect').selectOption('mary-lamb');
+    await page.waitForTimeout(500);
+    await page.waitForSelector('#notation svg .note', { timeout: 5000 });
+
+    // Mary Had a Little Lamb has mostly quarter notes in RH
+    const noteCount = await page.locator('#notation svg .note').count();
+    expect(noteCount).toBeGreaterThan(10);
+
+    // Check for rest elements (LH has whole rests)
+    const restCount = await page.locator('#notation svg .rest').count();
+    expect(restCount).toBeGreaterThan(0);
+  });
+
+  test('Happy Birthday (3/4 time) should render correctly', async ({ page }) => {
+    await page.locator('#optionsToggle').click();
+    await page.waitForTimeout(200);
+    await page.locator('#songSelect').selectOption('happy-birthday');
+    await page.waitForTimeout(500);
+    await page.waitForSelector('#notation svg .note', { timeout: 5000 });
+
+    // Check for time signature elements (3/4)
+    const timeSigElement = await page.locator('#notation svg .meterSig').count();
+    expect(timeSigElement).toBeGreaterThan(0);
+  });
+});

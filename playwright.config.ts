@@ -8,7 +8,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:5175/sightreading/',
+    baseURL: 'http://localhost:5173/sightreading/',
     trace: 'on-first-retry',
   },
 
@@ -31,7 +31,8 @@ export default defineConfig({
 
   webServer: {
     command: 'npm run dev',
-    url: 'http://localhost:5175/sightreading/',
+    url: 'http://localhost:5173/sightreading/',
     reuseExistingServer: true,
+    timeout: 120000,
   },
 });
