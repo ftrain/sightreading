@@ -12,6 +12,7 @@ export {
   getMeasures,
   type ParsedMusicXML,
   type MeasureData,
+  type TimedNote,
 } from './parser';
 
 export {

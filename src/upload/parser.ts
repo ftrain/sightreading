@@ -2,17 +2,26 @@
  * MusicXML Parser
  *
  * Parses MusicXML files into structured note data for practice.
- * Uses musicxml-interfaces for robust parsing.
+ * Uses native DOM parsing for compatibility with both browser and Node.js environments.
+ *
+ * Handles multiple voices via backup/forward elements for proper time positioning.
  *
  * @module upload/parser
  */
 
-import { parseScore, type Note as MXMLNote } from 'musicxml-interfaces';
 import type { NoteData, TimeSignature, KeyInfo } from '../core/types';
 
 // ============================================
 // TYPES
 // ============================================
+
+/**
+ * A note with its time position within the measure.
+ */
+export interface TimedNote extends NoteData {
+  /** Start time in beats from measure start */
+  startTime: number;
+}
 
 export interface MeasureData {
   number: number;
@@ -85,15 +94,160 @@ function durationToBeats(duration: number, divisions: number): number {
   return duration / divisions;
 }
 
+// Convert MusicXML note type string to beat duration
+function noteTypeStringToDuration(noteType: string, dots: number = 0): number {
+  let baseDuration: number;
+
+  switch (noteType) {
+    case 'whole': baseDuration = 4; break;
+    case 'half': baseDuration = 2; break;
+    case 'quarter': baseDuration = 1; break;
+    case 'eighth': baseDuration = 0.5; break;
+    case '16th': baseDuration = 0.25; break;
+    case '32nd': baseDuration = 0.125; break;
+    case '64th': baseDuration = 0.0625; break;
+    default: baseDuration = 1; break; // default to quarter
+  }
+
+  // Apply dots
+  let totalDuration = baseDuration;
+  let dotValue = baseDuration / 2;
+  for (let i = 0; i < dots; i++) {
+    totalDuration += dotValue;
+    dotValue /= 2;
+  }
+
+  return totalDuration;
+}
+
+// ============================================
+// MAIN PARSER
+// ============================================
+
+/**
+ * Flatten timed notes into sequential notes by sorting and merging.
+ * Notes at the same start time become chords.
+ * Returns notes in playback order with correct durations.
+ */
+function flattenTimedNotes(timedNotes: TimedNote[]): NoteData[] {
+  if (timedNotes.length === 0) return [];
+
+  // Sort by start time
+  const sorted = [...timedNotes].sort((a, b) => a.startTime - b.startTime);
+
+  // Group notes by start time (notes at same time form chords or simultaneous events)
+  const groups: Map<number, TimedNote[]> = new Map();
+  for (const note of sorted) {
+    const key = Math.round(note.startTime * 1000) / 1000; // Round to avoid float issues
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key)!.push(note);
+  }
+
+  // Convert to sequential notes
+  // For each time position, we take the shortest duration (the next event determines beat advance)
+  const result: NoteData[] = [];
+  const sortedTimes = Array.from(groups.keys()).sort((a, b) => a - b);
+
+  for (let i = 0; i < sortedTimes.length; i++) {
+    const time = sortedTimes[i];
+    const notesAtTime = groups.get(time)!;
+
+    // Find the shortest duration at this time (this determines when we move to next beat)
+    const shortestDuration = Math.min(...notesAtTime.map(n => n.duration));
+
+    // For playback: take the first non-rest note as the primary, others as chords
+    const nonRests = notesAtTime.filter(n => !n.isRest);
+    const rests = notesAtTime.filter(n => n.isRest);
+
+    if (nonRests.length > 0) {
+      // Use shortest duration for the group
+      const primary: NoteData = {
+        step: nonRests[0].step,
+        alter: nonRests[0].alter,
+        octave: nonRests[0].octave,
+        duration: shortestDuration,
+        isRest: false,
+      };
+
+      // Add additional notes as chord notes
+      if (nonRests.length > 1) {
+        primary.chordNotes = nonRests.slice(1).map(n => ({
+          step: n.step,
+          alter: n.alter,
+          octave: n.octave,
+          duration: shortestDuration,
+          isRest: false,
+        }));
+      }
+
+      result.push(primary);
+    } else if (rests.length > 0) {
+      // Only rests at this time
+      result.push({
+        step: 'C',
+        alter: 0,
+        octave: 4,
+        duration: shortestDuration,
+        isRest: true,
+      });
+    }
+  }
+
+  return result;
+}
+
+// ============================================
+// DOM HELPERS
+// ============================================
+
+/**
+ * Get text content of first matching child element.
+ */
+function getChildText(parent: Element, tagName: string): string | null {
+  const el = parent.getElementsByTagName(tagName)[0];
+  return el?.textContent ?? null;
+}
+
+/**
+ * Get numeric content of first matching child element.
+ */
+function getChildNumber(parent: Element, tagName: string): number | null {
+  const text = getChildText(parent, tagName);
+  return text !== null ? parseFloat(text) : null;
+}
+
+/**
+ * Check if element has a child with given tag name.
+ */
+function hasChild(parent: Element, tagName: string): boolean {
+  return parent.getElementsByTagName(tagName).length > 0;
+}
+
 // ============================================
 // MAIN PARSER
 // ============================================
 
 /**
  * Parse a MusicXML string into structured data.
+ *
+ * Uses native DOM parsing for compatibility.
+ *
+ * Properly handles:
+ * - Multiple voices via backup/forward elements
+ * - Chord notes (notes with <chord/> element)
+ * - Time signature and key signature
  */
 export function parseMusicXML(xmlString: string): ParsedMusicXML {
-  const score = parseScore(xmlString);
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlString, 'application/xml');
+
+  // Check for parse errors
+  const parseError = doc.querySelector('parsererror');
+  if (parseError) {
+    throw new Error(`XML parse error: ${parseError.textContent}`);
+  }
 
   // Default values
   let divisions = 1;
@@ -101,114 +255,169 @@ export function parseMusicXML(xmlString: string): ParsedMusicXML {
   let keySignature: KeyInfo = KEY_SIGNATURES['0'];
 
   // Get title from work or movement
-  const title = score.work?.workTitle || score.movementTitle || undefined;
+  const workTitle = doc.querySelector('work work-title')?.textContent;
+  const movementTitle = doc.querySelector('movement-title')?.textContent;
+  const title = workTitle || movementTitle || undefined;
 
   const measures: MeasureData[] = [];
 
-  // Process each measure (timewise format)
-  if (score.measures) {
-    for (let measureIdx = 0; measureIdx < score.measures.length; measureIdx++) {
-      const measure = score.measures[measureIdx];
+  // Get all parts
+  const parts = doc.querySelectorAll('part');
+
+  // For piano, we typically have one part with multiple staves
+  // Process all parts together
+  for (const part of parts) {
+    const measureElements = part.querySelectorAll('measure');
+
+    for (let measureIdx = 0; measureIdx < measureElements.length; measureIdx++) {
+      const measureEl = measureElements[measureIdx];
       const measureNumber = measureIdx + 1;
 
-      const rightHand: NoteData[] = [];
-      const leftHand: NoteData[] = [];
+      // Initialize or get existing measure data
+      if (!measures[measureIdx]) {
+        measures[measureIdx] = {
+          number: measureNumber,
+          rightHand: [],
+          leftHand: [],
+        };
+      }
 
-      // Process each part in the measure
-      for (const partId of Object.keys(measure.parts)) {
-        const part = measure.parts[partId];
+      // Collect timed notes for each hand
+      const rightHandTimed: TimedNote[] = [];
+      const leftHandTimed: TimedNote[] = [];
 
-        for (const item of part) {
-          // Check for attributes (divisions, time signature, key)
-          if ('divisions' in item && item.divisions) {
-            divisions = item.divisions;
+      // Track current time position within measure (in beats)
+      let currentTime = 0;
+
+      // Process all child elements in order
+      for (const child of measureEl.children) {
+        const tagName = child.tagName;
+
+        // Attributes element (divisions, time, key, clefs)
+        if (tagName === 'attributes') {
+          const divEl = getChildNumber(child, 'divisions');
+          if (divEl !== null) {
+            divisions = divEl;
           }
 
-          if ('times' in item && item.times) {
-            for (const time of item.times) {
-              if (time.beats && time.beatTypes) {
-                timeSignature = {
-                  beats: parseInt(time.beats[0], 10),
-                  beatType: time.beatTypes[0],
-                };
-              }
+          const timeEl = child.querySelector('time');
+          if (timeEl) {
+            const beats = getChildNumber(timeEl, 'beats');
+            const beatType = getChildNumber(timeEl, 'beat-type');
+            if (beats !== null && beatType !== null) {
+              timeSignature = { beats, beatType };
             }
           }
 
-          if ('keySignatures' in item && item.keySignatures) {
-            for (const key of item.keySignatures) {
-              if (key.fifths !== undefined) {
-                keySignature = KEY_SIGNATURES[String(key.fifths)] ?? KEY_SIGNATURES['0'];
-              }
+          const keyEl = child.querySelector('key');
+          if (keyEl) {
+            const fifths = getChildNumber(keyEl, 'fifths');
+            if (fifths !== null) {
+              keySignature = KEY_SIGNATURES[String(fifths)] ?? KEY_SIGNATURES['0'];
             }
           }
+        }
 
-          // Check for notes
-          if ('pitch' in item || 'rest' in item) {
-            const note = item as MXMLNote;
+        // Backup element - moves time backwards
+        if (tagName === 'backup') {
+          const duration = getChildNumber(child, 'duration');
+          if (duration !== null) {
+            currentTime -= durationToBeats(duration, divisions);
+            if (currentTime < 0) currentTime = 0;
+          }
+          continue;
+        }
 
-            // Skip chord notes (they share timing with previous note)
-            if (note.chord) continue;
+        // Forward element - moves time forward
+        if (tagName === 'forward') {
+          const duration = getChildNumber(child, 'duration');
+          if (duration !== null) {
+            currentTime += durationToBeats(duration, divisions);
+          }
+          continue;
+        }
 
-            // Determine staff (1 = treble/right hand, 2 = bass/left hand)
-            const staff = note.staff ?? 1;
+        // Note element
+        if (tagName === 'note') {
+          const isChord = hasChild(child, 'chord');
+          const isRest = hasChild(child, 'rest');
 
-            // Get duration
-            let duration: number;
-            if (note.noteType?.duration !== undefined) {
-              const dots = note.dots?.length ?? 0;
-              duration = noteTypeToDuration(note.noteType.duration, dots);
-            } else if (note.duration !== undefined) {
-              duration = durationToBeats(note.duration, divisions);
+          // Get staff (default to 1)
+          const staffNum = getChildNumber(child, 'staff') ?? 1;
+
+          // Get duration
+          let duration: number;
+          const typeEl = child.querySelector('type');
+          const durationEl = getChildNumber(child, 'duration');
+
+          if (typeEl?.textContent) {
+            const noteType = typeEl.textContent;
+            const dots = child.querySelectorAll('dot').length;
+            duration = noteTypeStringToDuration(noteType, dots);
+          } else if (durationEl !== null) {
+            duration = durationToBeats(durationEl, divisions);
+          } else {
+            duration = 1; // Default to quarter note
+          }
+
+          // Calculate start time
+          // Chord notes share the previous note's start time (don't advance time)
+          const noteStartTime = isChord ? Math.max(0, currentTime - duration) : currentTime;
+
+          if (isRest) {
+            const timedNote: TimedNote = {
+              step: 'C',
+              alter: 0,
+              octave: 4,
+              duration,
+              isRest: true,
+              startTime: noteStartTime,
+            };
+
+            if (staffNum === 1) {
+              rightHandTimed.push(timedNote);
             } else {
-              duration = 1; // Default to quarter note
+              leftHandTimed.push(timedNote);
             }
+          } else {
+            // Get pitch info
+            const pitchEl = child.querySelector('pitch');
+            if (pitchEl) {
+              const step = (getChildText(pitchEl, 'step') ?? 'C').toUpperCase();
+              const octave = getChildNumber(pitchEl, 'octave') ?? 4;
+              const alter = getChildNumber(pitchEl, 'alter') ?? 0;
 
-            // Check if rest
-            if (note.rest) {
-              const noteData: NoteData = {
-                step: 'C',
-                alter: 0,
-                octave: 4,
-                duration,
-                isRest: true,
-              };
-
-              if (staff === 1) {
-                rightHand.push(noteData);
-              } else {
-                leftHand.push(noteData);
-              }
-            } else if (note.pitch) {
-              // Get pitch info - step is a letter in musicxml-interfaces (may be lowercase)
-              // MusicXML standard uses uppercase (C, D, E, F, G, A, B)
-              const step = (note.pitch.step ?? 'C').toUpperCase();
-              const octave = note.pitch.octave ?? 4;
-              const alter = note.pitch.alter ?? 0;
-
-              const noteData: NoteData = {
+              const timedNote: TimedNote = {
                 step,
                 alter,
                 octave,
                 duration,
                 isRest: false,
+                startTime: noteStartTime,
               };
 
-              if (staff === 1) {
-                rightHand.push(noteData);
+              if (staffNum === 1) {
+                rightHandTimed.push(timedNote);
               } else {
-                leftHand.push(noteData);
+                leftHandTimed.push(timedNote);
               }
             }
+          }
+
+          // Advance time only for non-chord notes
+          if (!isChord) {
+            currentTime += duration;
           }
         }
       }
 
-      measures.push({
-        number: measureNumber,
-        rightHand,
-        leftHand,
-      });
+      // Flatten timed notes into sequential notes
+      const flattenedRH = flattenTimedNotes(rightHandTimed);
+      const flattenedLH = flattenTimedNotes(leftHandTimed);
+
+      // Merge with existing measure data (in case multiple parts)
+      measures[measureIdx].rightHand.push(...flattenedRH);
+      measures[measureIdx].leftHand.push(...flattenedLH);
     }
   }
 
