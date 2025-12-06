@@ -9,9 +9,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseMusicXML, getMeasureRange, type ParsedMusicXML } from '../upload/parser';
+import { parseMusicXML, getMeasureRange } from '../upload/parser';
 import { buildMusicXML } from '../music/xml/builder';
-import type { NoteData, TimeSignature, KeyInfo } from '../core/types';
+import type { NoteData } from '../core/types';
 
 // ============================================
 // TEST FIXTURES - Real MusicXML Examples
@@ -366,6 +366,13 @@ function noteDataToPitch(note: NoteData): string | null {
   return `${pitchName}${note.octave}`;
 }
 
+function pitchToPitchString(pitch: { step: string; alter: number; octave: number }): string {
+  let pitchName = pitch.step;
+  if (pitch.alter === 1) pitchName += '#';
+  else if (pitch.alter === -1) pitchName += 'b';
+  return `${pitchName}${pitch.octave}`;
+}
+
 function buildTimingEvents(rightHandNotes: NoteData[], leftHandNotes: NoteData[]): TimingEvent[] {
   const roundTime = (t: number) => Math.round(t * 1000) / 1000;
 
@@ -395,10 +402,8 @@ function buildTimingEvents(rightHandNotes: NoteData[], leftHandNotes: NoteData[]
     // Add chord note pitches
     if (note.chordNotes) {
       for (const chordNote of note.chordNotes) {
-        const chordPitch = noteDataToPitch(chordNote);
-        if (chordPitch) {
-          allEvents.get(timeKey)!.pitches.push(chordPitch);
-        }
+        const chordPitch = pitchToPitchString(chordNote);
+        allEvents.get(timeKey)!.pitches.push(chordPitch);
       }
     }
 
@@ -425,10 +430,8 @@ function buildTimingEvents(rightHandNotes: NoteData[], leftHandNotes: NoteData[]
     // Add chord note pitches
     if (note.chordNotes) {
       for (const chordNote of note.chordNotes) {
-        const chordPitch = noteDataToPitch(chordNote);
-        if (chordPitch) {
-          allEvents.get(timeKey)!.pitches.push(chordPitch);
-        }
+        const chordPitch = pitchToPitchString(chordNote);
+        allEvents.get(timeKey)!.pitches.push(chordPitch);
       }
     }
 

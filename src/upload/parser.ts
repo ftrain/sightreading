@@ -62,33 +62,6 @@ const KEY_SIGNATURES: Record<string, KeyInfo> = {
 // DURATION CONVERSION
 // ============================================
 
-// Map MusicXML note types to beat durations
-function noteTypeToDuration(noteType: number | undefined, dots: number = 0): number {
-  // MusicXML note types: 1024=1024th, 512=512th, 256=256th, 128=128th, 64=64th,
-  // 32=32nd, 16=16th, 8=eighth, 4=quarter, 2=half, 1=whole, etc.
-  let baseDuration: number;
-
-  switch (noteType) {
-    case 1: baseDuration = 4; break;      // whole
-    case 2: baseDuration = 2; break;      // half
-    case 4: baseDuration = 1; break;      // quarter
-    case 8: baseDuration = 0.5; break;    // eighth
-    case 16: baseDuration = 0.25; break;  // 16th
-    case 32: baseDuration = 0.125; break; // 32nd
-    default: baseDuration = 1; break;     // default to quarter
-  }
-
-  // Apply dots
-  let totalDuration = baseDuration;
-  let dotValue = baseDuration / 2;
-  for (let i = 0; i < dots; i++) {
-    totalDuration += dotValue;
-    dotValue /= 2;
-  }
-
-  return totalDuration;
-}
-
 // Convert MusicXML duration to beats using divisions
 function durationToBeats(duration: number, divisions: number): number {
   return duration / divisions;

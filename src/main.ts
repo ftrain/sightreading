@@ -32,6 +32,7 @@ import {
   getStepTypeLabel,
 } from './upload';
 import { buildMusicXML } from './music/xml/builder';
+import { getSongById } from './songs';
 
 // State
 let toolkit: VerovioToolkit;
@@ -826,6 +827,18 @@ function setupControls() {
     exitPracticeMode();
   });
 
+  // Built-in song selector
+  const songSelect = document.getElementById('songSelect') as HTMLSelectElement;
+  songSelect?.addEventListener('change', () => {
+    const songId = songSelect.value;
+    if (songId) {
+      if (isPlaying) stop();
+      loadBuiltInSong(songId);
+      // Reset the dropdown after loading
+      songSelect.value = '';
+    }
+  });
+
   levelUpBtn?.addEventListener('click', () => {
     if (currentMode === 'practice' && practiceSession) {
       // Practice mode: advance to next step
@@ -1228,6 +1241,56 @@ async function handleFileUpload(file: File) {
   } catch (error) {
     console.error('Error parsing MusicXML:', error);
     alert('Error parsing file. Please ensure it is a valid MusicXML file.');
+  }
+}
+
+/**
+ * Load a built-in song by ID and enter practice mode.
+ */
+function loadBuiltInSong(songId: string) {
+  const song = getSongById(songId);
+  if (!song) {
+    console.error('Song not found:', songId);
+    return;
+  }
+
+  try {
+    const parsed = parseMusicXML(song.xml);
+
+    if (parsed.measures.length === 0) {
+      console.error('No measures found in song:', songId);
+      return;
+    }
+
+    // Create practice session
+    practiceSession = new ProgressivePracticeSession(parsed);
+    currentMode = 'practice';
+
+    // Set appropriate BPM based on difficulty
+    const difficultyBpm = {
+      beginner: 60,
+      easy: 70,
+      intermediate: 80,
+    };
+    bpm = difficultyBpm[song.difficulty] || 60;
+    const bpmInput = document.getElementById('bpm') as HTMLInputElement;
+    if (bpmInput) bpmInput.value = String(bpm);
+
+    // Update UI for practice mode
+    enterPracticeMode();
+
+    // Render first step
+    renderPracticeStep();
+
+    // Close options panel if open
+    const optionsPanel = document.getElementById('optionsPanel');
+    if (optionsPanel && !optionsPanel.hidden) {
+      optionsPanel.hidden = true;
+      const optionsToggle = document.getElementById('optionsToggle');
+      optionsToggle?.setAttribute('aria-expanded', 'false');
+    }
+  } catch (error) {
+    console.error('Error loading song:', error);
   }
 }
 

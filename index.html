@@ -184,10 +184,24 @@
         </div>
 
         <div class="options-group">
-          <h3>Practice Your Own Music</h3>
+          <h3>Practice Songs</h3>
+          <div class="option-row">
+            <select id="songSelect" aria-label="Select a song to practice">
+              <option value="">Choose a song...</option>
+              <optgroup label="Beginner">
+                <option value="mary-lamb">Mary Had a Little Lamb</option>
+                <option value="twinkle">Twinkle Twinkle Little Star</option>
+                <option value="ode-to-joy">Ode to Joy (Beethoven)</option>
+              </optgroup>
+              <optgroup label="Easy">
+                <option value="happy-birthday">Happy Birthday</option>
+                <option value="minuet-g">Minuet in G (Bach)</option>
+              </optgroup>
+            </select>
+          </div>
           <div class="option-row">
             <label class="file-upload-label" for="xmlUploadOptions">
-              <span>Upload MusicXML</span>
+              <span>Or upload MusicXML</span>
               <span class="upload-hint">.xml, .musicxml</span>
             </label>
             <input type="file" id="xmlUploadOptions" accept=".xml,.musicxml" />
