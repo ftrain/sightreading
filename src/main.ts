@@ -23,12 +23,9 @@ import {
   setKeyOverride,
   setHandModeOverride,
 } from './musicGenerator';
-import type { NoteData, TimingEvent, KeyInfo } from './core/types';
+import type { NoteData, KeyInfo } from './core/types';
 import { midiToNoteName, normalizeNoteName } from './core/noteUtils';
-import {
-  shouldAllowMetronomeClick,
-  beatsToSeconds,
-} from './scheduler';
+import { beatsToSeconds } from './scheduler';
 import {
   createMidiSource,
   createXmlSource,
@@ -36,61 +33,14 @@ import {
 import { buildMusicXML } from './music/xml/builder';
 import { PieceStudyLesson } from './curriculum/lessons/piece-study';
 import { recordAttempt, getAccuracy } from './app/analytics';
+import { playbackState as ps } from './app/PlaybackState';
 
-// State
+// Core instances
 let toolkit: VerovioToolkit;
-let isPlaying = false;
-let currentBeatIndex = 0;
 let sampler: Tone.Sampler | null = null;
 let scheduledEvents: number[] = [];
-
-// SVG elements grouped by beat position (for visual highlighting only)
-interface VisualGroup {
-  elements: SVGElement[];
-}
-let visualGroups: VisualGroup[] = [];
-
-// Timing data from music generator (source of truth for durations and playback)
-// TimingEvent imported from core/types
-let timingEvents: TimingEvent[] = [];
-
-// Current time signature
-let currentTimeSig = { beats: 4, beatType: 4 };
-
-// Countoff state
-let countoffBeats = 0;
-let isCountingOff = false;
-
-// Metronome debounce to prevent double clicks
-let lastMetronomeTime = 0;
-
-// Current notes being played (for MIDI matching)
-let activeNotes: Set<string> = new Set();
-
-// MIDI devices
 let midiInputs: Map<string, MIDIInput> = new Map();
-let selectedMidiInput: string | null = localStorage.getItem('midiDeviceId');
-
-// Settings
-let bpm = 30;
-let metronomeEnabled = true;
-let metronomeVolume = -20; // dB base for metronome (quieter default)
 let autoTempoRamp = false;
-
-// Store the current piece's XML
-let currentPieceXml: string = '';
-
-// Performance tracking
-let mistakeCount = 0;
-
-// Current lesson info
-let currentLessonDescription = '';
-
-// Current piece notes for playback timing (source of truth)
-let currentRightHandNotes: NoteData[] = [];
-let currentLeftHandNotes: NoteData[] = [];
-
-// Piece study lesson for imported files (chunks into segments)
 let currentPieceStudy: PieceStudyLesson | null = null;
 
 
@@ -140,14 +90,9 @@ async function init() {
     const wasMobile = isMobileMode();
     updateMobileMode();
     updateVerovioOptions();
-    if (!isPlaying) {
-      // In piece study mode, just re-render current segment
-      // In sight reading mode, regenerate if mobile mode changed
-      if (currentPieceStudy) {
-        rerenderCurrentMusic();
-      } else {
-        wasMobile !== isMobileMode() ? generateAndRender() : rerenderCurrentMusic();
-      }
+    if (!ps.isPlaying) {
+      if (currentPieceStudy) rerenderCurrentMusic();
+      else wasMobile !== isMobileMode() ? generateAndRender() : rerenderCurrentMusic();
     }
   };
   window.addEventListener('resize', handleResize);
@@ -181,8 +126,8 @@ function updateVerovioOptions() {
 
 // Re-render the current piece without generating new music
 function rerenderCurrentMusic() {
-  if (!currentPieceXml) return;
-  toolkit.loadData(currentPieceXml);
+  if (!ps.pieceXml) return;
+  toolkit.loadData(ps.pieceXml);
   const svg = toolkit.renderToSVG(1);
   const notation = document.getElementById('notation')!;
   notation.innerHTML = svg;
@@ -191,12 +136,8 @@ function rerenderCurrentMusic() {
 
 // Regenerate XML from current notes (for fingering toggle)
 function regenerateCurrentMusicXML() {
-  if (currentRightHandNotes.length === 0 && currentLeftHandNotes.length === 0) return;
-  currentPieceXml = regenerateXMLFromNotes(
-    currentRightHandNotes,
-    currentLeftHandNotes,
-    currentTimeSig
-  );
+  if (ps.rightHandNotes.length === 0 && ps.leftHandNotes.length === 0) return;
+  ps.pieceXml = regenerateXMLFromNotes(ps.rightHandNotes, ps.leftHandNotes, ps.timeSig);
 }
 
 async function initAudio() {
@@ -240,323 +181,144 @@ async function checkSamplesExist(path: string): Promise<boolean> {
 }
 
 function playMetronomeClick(subdivisionInBeat: number) {
-  if (!metronomeEnabled) return;
+  if (!ps.metronomeEnabled || !ps.shouldFireMetronome()) return;
 
-  // Debounce to prevent double clicks from overlapping schedules
-  const now = performance.now();
-  if (!shouldAllowMetronomeClick(now, lastMetronomeTime, bpm)) {
-    return;
-  }
-  lastMetronomeTime = now;
-
-  // Create a fresh synth each time to avoid timing conflicts
   const synth = new Tone.Synth({
     oscillator: { type: 'sine' },
     envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.05 },
   }).toDestination();
 
-  let volume: number;
-  let pitch: string;
-
-  if (subdivisionInBeat === 0) {
-    // Main beat - start quieter (was metronomeVolume, now -6dB quieter)
-    volume = metronomeVolume - 6;
-    pitch = 'G5';
-  } else {
-    // Subdivisions are 18dB quieter than main beat (much quieter)
-    volume = metronomeVolume - 24;
-    pitch = 'C5';
-  }
-
-  synth.volume.value = volume;
-  synth.triggerAttackRelease(pitch, '32n');
-
-  // Dispose after playing
+  const isMainBeat = subdivisionInBeat === 0;
+  synth.volume.value = ps.metronomeVolume - (isMainBeat ? 6 : 24);
+  synth.triggerAttackRelease(isMainBeat ? 'G5' : 'C5', '32n');
   setTimeout(() => synth.dispose(), 500);
 }
 
 function generateAndRender() {
-  // Clear piece study mode when generating new procedural exercises
   currentPieceStudy = null;
-
   updateVerovioOptions();
-  const {
-    xml,
-    timeSignature,
-    lessonDescription,
-    suggestedBpm,
-    rightHandNotes,
-    leftHandNotes,
-  } = generateMusicXML();
 
-  currentTimeSig = timeSignature;
-  currentPieceXml = xml;
-  currentLessonDescription = lessonDescription;
-  currentRightHandNotes = rightHandNotes;
-  currentLeftHandNotes = leftHandNotes;
+  const { xml, timeSignature, lessonDescription, suggestedBpm, rightHandNotes, leftHandNotes } = generateMusicXML();
+  ps.timeSig = timeSignature;
+  ps.pieceXml = xml;
+  ps.lessonDescription = lessonDescription;
+  ps.rightHandNotes = rightHandNotes;
+  ps.leftHandNotes = leftHandNotes;
 
   // Sync BPM with lesson suggestion on level change
   const bpmInput = document.getElementById('bpm') as HTMLInputElement;
-  if (bpmInput && suggestedBpm) {
-    const currentBpm = getCurrentBpm();
-    // Only update if this is a new level (BPM resets)
-    if (currentBpm === suggestedBpm) {
-      bpm = suggestedBpm;
-      bpmInput.value = String(suggestedBpm);
-      setBpm(suggestedBpm);
-    }
+  if (bpmInput && suggestedBpm && getCurrentBpm() === suggestedBpm) {
+    ps.bpm = suggestedBpm;
+    bpmInput.value = String(suggestedBpm);
+    setBpm(suggestedBpm);
   }
 
   renderCurrentMusic();
-
-  // Update level display
   updateLevelDisplay();
 }
 
 function renderCurrentMusic() {
-  toolkit.loadData(currentPieceXml);
+  toolkit.loadData(ps.pieceXml);
   const svg = toolkit.renderToSVG(1);
-  const notation = document.getElementById('notation')!;
-  notation.innerHTML = svg;
-
-  // Build timing events from the source note data (not from SVG)
+  document.getElementById('notation')!.innerHTML = svg;
   buildTimingEvents();
-
-  // Group SVG elements by position for visual highlighting
   groupNotesByPosition();
 }
 
-// Build timing events from the generated note data
-// This is the source of truth for durations
+// Build timing events from note data (source of truth for durations)
 function buildTimingEvents() {
-  timingEvents = [];
-
-  // Merge right and left hand notes by time position
-  // Use string keys to avoid floating point precision issues
-  const allEvents: Map<string, number> = new Map(); // time (rounded) -> shortest duration at that time
-
-  // Round time to avoid floating point precision issues (e.g., 7.0 vs 7.000000000000001)
   const roundTime = (t: number) => Math.round(t * 1000) / 1000;
+  const allEvents: Map<string, number> = new Map();
 
-  let currentTime = 0;
-  for (const note of currentRightHandNotes) {
-    const timeKey = String(roundTime(currentTime));
-    const existing = allEvents.get(timeKey);
-    if (existing === undefined || note.duration < existing) {
-      allEvents.set(timeKey, note.duration);
+  // Merge both hands by time position
+  for (const notes of [ps.rightHandNotes, ps.leftHandNotes]) {
+    let t = 0;
+    for (const note of notes) {
+      const key = String(roundTime(t));
+      const existing = allEvents.get(key);
+      if (existing === undefined || note.duration < existing) allEvents.set(key, note.duration);
+      t += note.duration;
     }
-    currentTime += note.duration;
   }
 
-  currentTime = 0;
-  for (const note of currentLeftHandNotes) {
-    const timeKey = String(roundTime(currentTime));
-    const existing = allEvents.get(timeKey);
-    if (existing === undefined || note.duration < existing) {
-      allEvents.set(timeKey, note.duration);
-    }
-    currentTime += note.duration;
-  }
-
-  // Convert to sorted array
-  const sortedTimes = Array.from(allEvents.keys()).map(Number).sort((a, b) => a - b);
-
-  for (let i = 0; i < sortedTimes.length; i++) {
-    const time = sortedTimes[i];
-    const timeKey = String(time);
-    const nextTime = i < sortedTimes.length - 1 ? sortedTimes[i + 1] : time + allEvents.get(timeKey)!;
-    // Duration is time until next event (or the note's own duration if last)
-    const duration = nextTime - time;
-    timingEvents.push({ time, duration });
-  }
-
+  const sorted = Array.from(allEvents.keys()).map(Number).sort((a, b) => a - b);
+  ps.timingEvents = sorted.map((time, i) => ({
+    time,
+    duration: (i < sorted.length - 1 ? sorted[i + 1] : time + allEvents.get(String(time))!) - time,
+  }));
 }
 
 function updateLevelDisplay() {
-  const levelDisplay = document.getElementById('levelDisplay');
-  const levelIndicator = document.getElementById('levelIndicator');
-  const lessonInfo = document.getElementById('lessonInfo');
-  const progressInfo = document.getElementById('progressInfo');
-  const levelJump = document.getElementById('levelJump') as HTMLSelectElement;
+  const levelStr = getFullLevelString();
+  const el = (id: string) => document.getElementById(id);
 
-  const levelString = getFullLevelString();
-  const levelText = `Level ${levelString}`;
+  if (el('levelDisplay')) el('levelDisplay')!.textContent = levelStr;
+  if (el('levelIndicator')) el('levelIndicator')!.textContent = `Level ${levelStr}`;
+  if (el('levelJump')) (el('levelJump') as HTMLSelectElement).value = String(getLevel());
+  if (el('lessonInfo')) el('lessonInfo')!.textContent = ps.lessonDescription;
 
-  // Update the badge in the score header
-  if (levelDisplay) {
-    levelDisplay.textContent = levelString;
-  }
-
-  // Update the control bar indicator
-  if (levelIndicator) {
-    levelIndicator.textContent = levelText;
-  }
-
-  // Sync level jump selector
-  if (levelJump) {
-    levelJump.value = String(getLevel());
-  }
-
-  if (lessonInfo) {
-    lessonInfo.textContent = currentLessonDescription;
-  }
-
+  const progressInfo = el('progressInfo');
   if (progressInfo) {
     const remaining = getRepetitionsRemaining();
-    const tempoMasteryRemaining = getBpmMasteryRemaining();
+    const tempoRemaining = getBpmMasteryRemaining();
     const accuracy = getAccuracy(getLevel(), getSubLevel());
-
-    // Show both note mastery and tempo mastery progress
-    let progressText = '';
-    if (remaining > 0) {
-      progressText = `${remaining} more to advance`;
-    }
-
-    // Show accuracy if we have data
-    if (accuracy > 0) {
-      progressText += progressText ? ' | ' : '';
-      progressText += `${accuracy}% accuracy`;
-    }
-
-    // Show tempo increase suggestion if mastered at current tempo
-    if (shouldIncreaseTempo()) {
-      progressText += progressText ? ' | ' : '';
-      progressText += 'Ready to increase tempo!';
-    } else if (tempoMasteryRemaining > 0 && remaining === 0) {
-      progressText += progressText ? ' | ' : '';
-      progressText += `${tempoMasteryRemaining} at tempo`;
-    }
-
-    progressInfo.textContent = progressText;
+    const parts: string[] = [];
+    if (remaining > 0) parts.push(`${remaining} more to advance`);
+    if (accuracy > 0) parts.push(`${accuracy}% accuracy`);
+    if (shouldIncreaseTempo()) parts.push('Ready to increase tempo!');
+    else if (tempoRemaining > 0 && remaining === 0) parts.push(`${tempoRemaining} at tempo`);
+    progressInfo.textContent = parts.join(' | ');
   }
 }
 
 
 function groupNotesByPosition() {
   const notation = document.getElementById('notation')!;
-  const elements = notation.querySelectorAll('.note, .rest');
   const notationRect = notation.getBoundingClientRect();
-
-  // Include all staves (both hands)
-  const staffToInclude: number | null = null;
-
-  // First, collect all elements with their positions
-  interface NotePosition {
-    el: SVGElement;
-    x: number;
-    y: number;
-    staff: number | null;
-  }
-  const notePositions: NotePosition[] = [];
-
-  // Find staff line positions to determine which system each note belongs to
   const staffLines = notation.querySelectorAll('.staff');
-  const systemYRanges: { top: number; bottom: number }[] = [];
 
-  // Group staff lines into systems (each system has 2 staves for grand staff)
+  // Build system Y ranges (grand staff = 2 staves per system)
+  const systemYRanges: { top: number; bottom: number }[] = [];
   for (let i = 0; i < staffLines.length; i += 2) {
-    const staff1Rect = staffLines[i]?.getBoundingClientRect();
-    const staff2Rect = staffLines[i + 1]?.getBoundingClientRect();
-    if (staff1Rect && staff2Rect) {
-      systemYRanges.push({
-        top: Math.min(staff1Rect.top, staff2Rect.top) - notationRect.top,
-        bottom: Math.max(staff1Rect.bottom, staff2Rect.bottom) - notationRect.top,
-      });
-    }
+    const r1 = staffLines[i]?.getBoundingClientRect();
+    const r2 = staffLines[i + 1]?.getBoundingClientRect();
+    if (r1 && r2) systemYRanges.push({
+      top: Math.min(r1.top, r2.top) - notationRect.top,
+      bottom: Math.max(r1.bottom, r2.bottom) - notationRect.top,
+    });
   }
 
-  elements.forEach((el) => {
+  // Collect note positions with system-based sort key
+  const notePositions: { el: SVGElement; x: number; sortKey: number }[] = [];
+  notation.querySelectorAll('.note, .rest').forEach((el) => {
     const rect = el.getBoundingClientRect();
     if (rect.height === 0) return;
-
-    const relativeY = rect.top - notationRect.top;
-    const relativeX = rect.left - notationRect.left;
-
-    // Determine which system this note is in
-    let systemIndex = 0;
-    for (let i = 0; i < systemYRanges.length; i++) {
-      if (
-        relativeY >= systemYRanges[i].top &&
-        relativeY <= systemYRanges[i].bottom
-      ) {
-        systemIndex = i;
-        break;
-      }
-      // If we're past this system's range, try the next one
-      if (relativeY > systemYRanges[i].bottom) {
-        systemIndex = i + 1;
-      }
-    }
-
-    // Determine staff within the system (1 = treble/top, 2 = bass/bottom)
-    let noteStaff: number | null = null;
-    if (systemYRanges[systemIndex]) {
-      const systemMidpoint =
-        (systemYRanges[systemIndex].top + systemYRanges[systemIndex].bottom) / 2;
-      noteStaff = relativeY < systemMidpoint ? 1 : 2;
-    }
-
-    // If in single-hand mode, only include notes from that staff
-    if (
-      staffToInclude !== null &&
-      noteStaff !== null &&
-      noteStaff !== staffToInclude
-    ) {
-      return;
-    }
-
-    notePositions.push({
-      el: el as SVGElement,
-      x: relativeX,
-      y: systemIndex * 10000 + relativeX, // Sort key: system first, then x position
-      staff: noteStaff,
-    });
+    const relY = rect.top - notationRect.top;
+    const relX = rect.left - notationRect.left;
+    let sysIdx = systemYRanges.findIndex(r => relY >= r.top && relY <= r.bottom);
+    if (sysIdx < 0) sysIdx = systemYRanges.findIndex(r => relY > r.bottom) + 1;
+    notePositions.push({ el: el as SVGElement, x: relX, sortKey: (sysIdx < 0 ? 0 : sysIdx) * 10000 + relX });
   });
+  notePositions.sort((a, b) => a.sortKey - b.sortKey);
 
-  // Sort by system (y-based) then by x position
-  notePositions.sort((a, b) => a.y - b.y);
+  // Group by x position (tolerance 5px)
+  const posMap = new Map<number, SVGElement[]>();
+  for (const { el, x } of notePositions) {
+    let key = [...posMap.keys()].find(k => Math.abs(k - x) < 5);
+    if (key !== undefined) posMap.get(key)!.push(el);
+    else posMap.set(x, [el]);
+  }
 
-  // Group notes that are at the same x position (within tolerance)
-  const tolerance = 5;
-  const positionMap = new Map<number, SVGElement[]>();
-
-  notePositions.forEach(({ el, x }) => {
-    let foundKey: number | null = null;
-    for (const key of positionMap.keys()) {
-      if (Math.abs(key - x) < tolerance) {
-        foundKey = key;
-        break;
-      }
+  // Build visual groups in order of first appearance
+  const seen = new Set<number>();
+  ps.visualGroups = [];
+  for (const { x } of notePositions) {
+    const key = [...posMap.keys()].find(k => Math.abs(k - x) < 5);
+    if (key !== undefined && !seen.has(key)) {
+      seen.add(key);
+      ps.visualGroups.push({ elements: posMap.get(key)! });
     }
-
-    if (foundKey !== null) {
-      positionMap.get(foundKey)!.push(el);
-    } else {
-      positionMap.set(x, [el]);
-    }
-  });
-
-  // Build beat groups in order of first appearance
-  const seenKeys = new Set<number>();
-  visualGroups = [];
-
-  notePositions.forEach(({ x }) => {
-    // Find the key this x belongs to
-    let key: number | null = null;
-    for (const k of positionMap.keys()) {
-      if (Math.abs(k - x) < tolerance) {
-        key = k;
-        break;
-      }
-    }
-
-    if (key !== null && !seenKeys.has(key)) {
-      seenKeys.add(key);
-      const els = positionMap.get(key)!;
-      // Only store elements for visual highlighting - timing comes from timingEvents
-      visualGroups.push({ elements: els });
-    }
-  });
+  }
 }
 
 function setupMIDI() {
@@ -579,93 +341,81 @@ function setupMIDI() {
 
 function updateMidiDevices(midiAccess: MIDIAccess) {
   midiInputs.clear();
-
   for (const input of midiAccess.inputs.values()) {
     midiInputs.set(input.id, input);
     input.onmidimessage = handleMIDIMessage;
   }
 
   const midiSelect = document.getElementById('midiInput') as HTMLSelectElement;
-  if (midiSelect) {
-    const currentValue = midiSelect.value;
-    midiSelect.innerHTML = '<option value="">No MIDI Device</option>';
+  if (!midiSelect) return;
 
-    for (const [id, input] of midiInputs) {
-      const option = document.createElement('option');
-      option.value = id;
-      option.textContent = input.name || id;
-      midiSelect.appendChild(option);
-    }
-
-    // Prefer saved device, then current selection, then first available
-    const savedDevice = localStorage.getItem('midiDeviceId');
-    if (savedDevice && midiInputs.has(savedDevice)) {
-      midiSelect.value = savedDevice;
-    } else if (currentValue && midiInputs.has(currentValue)) {
-      midiSelect.value = currentValue;
-    } else if (midiInputs.size > 0) {
-      const firstDevice = midiInputs.keys().next().value;
-      if (firstDevice) midiSelect.value = firstDevice;
-    }
-
-    selectedMidiInput = midiSelect.value || null;
+  const currentValue = midiSelect.value;
+  midiSelect.innerHTML = '<option value="">No MIDI Device</option>';
+  for (const [id, input] of midiInputs) {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = input.name || id;
+    midiSelect.appendChild(opt);
   }
+
+  // Prefer saved > current > first available
+  const saved = ps.selectedMidiInput;
+  if (saved && midiInputs.has(saved)) midiSelect.value = saved;
+  else if (currentValue && midiInputs.has(currentValue)) midiSelect.value = currentValue;
+  else if (midiInputs.size > 0) midiSelect.value = midiInputs.keys().next().value!;
+
+  ps.selectedMidiInput = midiSelect.value || null;
 }
 
 function handleMIDIMessage(event: MIDIMessageEvent) {
   const [status, noteNum, velocity] = event.data!;
-  const command = status & 0xf0;
+  const cmd = status & 0xf0;
+  const noteName = midiToNoteName(noteNum);
 
-  if (command === 0x90 && velocity > 0) {
-    const noteName = midiToNoteName(noteNum);
-    activeNotes.add(noteName);
+  if (cmd === 0x90 && velocity > 0) {
+    ps.activeNotes.add(noteName);
     checkNoteMatch(noteName);
-  } else if (command === 0x80 || (command === 0x90 && velocity === 0)) {
-    const noteName = midiToNoteName(noteNum);
-    activeNotes.delete(noteName);
+  } else if (cmd === 0x80 || (cmd === 0x90 && velocity === 0)) {
+    ps.activeNotes.delete(noteName);
   }
 }
 
 function checkNoteMatch(playedNote: string) {
-  if (!isPlaying || isCountingOff) return;
+  if (!ps.isPlaying || ps.isCountingOff) return;
 
   const notation = document.getElementById('notation')!;
-  const normalizedPlayed = normalizeNoteName(playedNote);
+  const normalized = normalizeNoteName(playedNote);
+  const currentEls = notation.querySelectorAll('.note.current');
+  let matched = false;
 
   // Check current notes
-  const currentElements = notation.querySelectorAll('.note.current');
-  let matchedAny = false;
-
-  currentElements.forEach((el) => {
-    const noteData = getNoteDataFromElement(el as SVGElement);
-    if (noteData && normalizeNoteName(noteData) === normalizedPlayed) {
+  currentEls.forEach((el) => {
+    const data = getNoteDataFromElement(el as SVGElement);
+    if (data && normalizeNoteName(data) === normalized) {
       el.classList.add('correct');
       el.classList.remove('wrong');
-      matchedAny = true;
+      matched = true;
     }
   });
 
-  // Also check upcoming notes (be forgiving of early plays)
-  // Look at the next beat group that hasn't been played yet
-  if (!matchedAny && currentBeatIndex < visualGroups.length) {
-    const upcomingGroup = visualGroups[currentBeatIndex];
-    for (const el of upcomingGroup.elements) {
+  // Check upcoming notes (forgiving of early plays)
+  if (!matched && ps.beatIndex < ps.visualGroups.length) {
+    for (const el of ps.visualGroups[ps.beatIndex].elements) {
       if (el.classList.contains('note')) {
-        const noteData = getNoteDataFromElement(el);
-        if (noteData && normalizeNoteName(noteData) === normalizedPlayed) {
-          // Mark as correct early - it will show when the note becomes current
+        const data = getNoteDataFromElement(el);
+        if (data && normalizeNoteName(data) === normalized) {
           el.setAttribute('data-early-correct', 'true');
-          matchedAny = true;
+          matched = true;
         }
       }
     }
   }
 
-  if (!matchedAny && currentElements.length > 0) {
-    currentElements.forEach((el) => {
+  if (!matched && currentEls.length > 0) {
+    currentEls.forEach((el) => {
       if (!el.classList.contains('correct')) {
         el.classList.add('wrong');
-        mistakeCount++;
+        ps.hadMistake = true;
       }
     });
   }
@@ -732,42 +482,32 @@ function setupControls() {
   }
 
   bpmInput.addEventListener('change', () => {
-    bpm = parseInt(bpmInput.value) || 30;
-    setBpm(bpm); // Sync with musicGenerator's tempo tracking
+    ps.bpm = parseInt(bpmInput.value) || 30;
+    setBpm(ps.bpm);
   });
 
   metronomeCheckbox.addEventListener('change', () => {
-    metronomeEnabled = metronomeCheckbox.checked;
-    // Sync the toolbar button state
-    const metronomeBtn = document.getElementById('metronomeToggle');
-    if (metronomeBtn) {
-      metronomeBtn.classList.toggle('active', metronomeCheckbox.checked);
-      metronomeBtn.setAttribute('aria-pressed', String(metronomeCheckbox.checked));
+    ps.metronomeEnabled = metronomeCheckbox.checked;
+    const btn = document.getElementById('metronomeToggle');
+    if (btn) {
+      btn.classList.toggle('active', ps.metronomeEnabled);
+      btn.setAttribute('aria-pressed', String(ps.metronomeEnabled));
     }
   });
 
-  // Metronome toggle button in control bar
   const metronomeToggle = document.getElementById('metronomeToggle');
   if (metronomeToggle) {
     metronomeToggle.addEventListener('click', () => {
-      const isActive = metronomeToggle.classList.toggle('active');
-      metronomeToggle.setAttribute('aria-pressed', String(isActive));
-      metronomeEnabled = isActive;
-      // Sync the options panel checkbox
-      if (metronomeCheckbox) {
-        metronomeCheckbox.checked = isActive;
-      }
+      ps.metronomeEnabled = metronomeToggle.classList.toggle('active');
+      metronomeToggle.setAttribute('aria-pressed', String(ps.metronomeEnabled));
+      metronomeCheckbox.checked = ps.metronomeEnabled;
     });
   }
 
-  const metronomeVolumeSlider = document.getElementById(
-    'metronomeVolume'
-  ) as HTMLInputElement;
+  const metronomeVolumeSlider = document.getElementById('metronomeVolume') as HTMLInputElement;
   if (metronomeVolumeSlider) {
     metronomeVolumeSlider.addEventListener('input', () => {
-      // Slider is 0-100, map to -40dB to 0dB
-      const sliderValue = parseInt(metronomeVolumeSlider.value);
-      metronomeVolume = (sliderValue / 100) * 40 - 40; // 0 -> -40dB, 100 -> 0dB
+      ps.metronomeVolume = (parseInt(metronomeVolumeSlider.value) / 100) * 40 - 40;
     });
   }
 
@@ -777,7 +517,7 @@ function setupControls() {
     levelJumpSelect.addEventListener('change', () => {
       const newLevel = parseInt(levelJumpSelect.value);
       if (newLevel >= 1) {
-        if (isPlaying) stop();
+        if (ps.isPlaying) stop();
         setLevel(newLevel);
         setSubLevel(0);
         generateAndRender();
@@ -790,9 +530,8 @@ function setupControls() {
   const keySelect = document.getElementById('keySelect') as HTMLSelectElement;
   if (keySelect) {
     keySelect.addEventListener('change', () => {
-      if (isPlaying) stop();
-      const selectedKey = keySelect.value || null;
-      setKeyOverride(selectedKey);
+      if (ps.isPlaying) stop();
+      setKeyOverride(keySelect.value || null);
       generateAndRender();
     });
   }
@@ -801,9 +540,8 @@ function setupControls() {
   const handModeSelect = document.getElementById('handMode') as HTMLSelectElement;
   if (handModeSelect) {
     handModeSelect.addEventListener('change', () => {
-      if (isPlaying) stop();
-      const mode = handModeSelect.value as 'right' | 'left' | 'both' | '';
-      setHandModeOverride(mode || null);
+      if (ps.isPlaying) stop();
+      setHandModeOverride((handModeSelect.value as 'right' | 'left' | 'both') || null);
       generateAndRender();
     });
   }
@@ -844,12 +582,7 @@ function setupControls() {
   }
 
   midiSelect.addEventListener('change', () => {
-    selectedMidiInput = midiSelect.value || null;
-    if (selectedMidiInput) {
-      localStorage.setItem('midiDeviceId', selectedMidiInput);
-    } else {
-      localStorage.removeItem('midiDeviceId');
-    }
+    ps.selectedMidiInput = midiSelect.value || null;
   });
 
   // Auto tempo ramp checkbox
@@ -861,21 +594,14 @@ function setupControls() {
   }
 
   levelUpBtn?.addEventListener('click', () => {
-    // In piece study mode, navigate to next measure
-    if (currentPieceStudy) {
-      nextSegment();
-      return;
-    }
-    // If tempo mastery achieved, increase tempo instead of level
+    if (currentPieceStudy) { nextSegment(); return; }
     if (shouldIncreaseTempo()) {
       increaseTempo();
-      const newBpm = getCurrentBpm();
-      bpm = newBpm;
-      const bpmInputEl = document.getElementById('bpm') as HTMLInputElement;
-      if (bpmInputEl) bpmInputEl.value = String(newBpm);
+      ps.bpm = getCurrentBpm();
+      (document.getElementById('bpm') as HTMLInputElement).value = String(ps.bpm);
       updateLevelDisplay();
     } else {
-      if (isPlaying) stop();
+      if (ps.isPlaying) stop();
       incrementLevel();
       generateAndRender();
       updateLevelDisplay();
@@ -883,51 +609,29 @@ function setupControls() {
   });
 
   levelDownBtn?.addEventListener('click', () => {
-    // In piece study mode, navigate to previous measure
-    if (currentPieceStudy) {
-      previousSegment();
-      return;
-    }
-    const current = getLevel();
-    if (current > 1) {
-      if (isPlaying) stop();
-      setLevel(current - 1);
+    if (currentPieceStudy) { previousSegment(); return; }
+    if (getLevel() > 1) {
+      if (ps.isPlaying) stop();
+      setLevel(getLevel() - 1);
       generateAndRender();
       updateLevelDisplay();
     }
   });
 
   playPauseBtn.addEventListener('click', async () => {
-    if (isPlaying) {
-      stop();
-    } else {
-      await start();
-    }
+    ps.isPlaying ? stop() : await start();
   });
 
   // Keyboard shortcuts
   document.addEventListener('keydown', async (e) => {
-    // Ignore if user is typing in an input field
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) {
-      return;
-    }
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
     if (e.code === 'Space') {
       e.preventDefault();
-      if (isPlaying) {
-        stop();
-      } else {
-        await start();
-      }
+      ps.isPlaying ? stop() : await start();
     }
-    // Arrow keys for segment navigation (when in piece study mode)
     if (currentPieceStudy) {
-      if (e.code === 'ArrowRight') {
-        e.preventDefault();
-        nextSegment();
-      } else if (e.code === 'ArrowLeft') {
-        e.preventDefault();
-        previousSegment();
-      }
+      if (e.code === 'ArrowRight') { e.preventDefault(); nextSegment(); }
+      else if (e.code === 'ArrowLeft') { e.preventDefault(); previousSegment(); }
     }
   });
 
@@ -944,7 +648,7 @@ function setupControls() {
       const file = fileInput.files?.[0];
       if (!file) return;
 
-      if (isPlaying) stop();
+      if (ps.isPlaying) stop();
 
       const filename = file.name.toLowerCase();
       let result;
@@ -998,12 +702,10 @@ function loadImportedMusic(
   loadCurrentSegment();
 
   // Update BPM from import
-  const suggestedBpm = musicData.metadata.suggestedBpm;
-  if (suggestedBpm) {
-    bpm = suggestedBpm;
-    const bpmInput = document.getElementById('bpm') as HTMLInputElement;
-    if (bpmInput) bpmInput.value = String(suggestedBpm);
-    setBpm(suggestedBpm);
+  if (musicData.metadata.suggestedBpm) {
+    ps.bpm = musicData.metadata.suggestedBpm;
+    (document.getElementById('bpm') as HTMLInputElement).value = String(ps.bpm);
+    setBpm(ps.bpm);
   }
 
   // Show segment navigation
@@ -1017,269 +719,154 @@ function loadCurrentSegment() {
   const step = currentPieceStudy.getCurrentStep();
   const music = step.musicSource.getMusic();
 
-  // Update current notes
-  currentRightHandNotes = music.rightHandNotes;
-  currentLeftHandNotes = music.leftHandNotes;
-  currentTimeSig = music.timeSignature;
+  ps.rightHandNotes = music.rightHandNotes;
+  ps.leftHandNotes = music.leftHandNotes;
+  ps.timeSig = music.timeSignature;
+  ps.pieceXml = buildMusicXML(ps.rightHandNotes, ps.leftHandNotes, {
+    key: music.key,
+    timeSignature: ps.timeSig,
+    startMeasure: music.metadata.startMeasure,
+  });
+  ps.lessonDescription = `${currentPieceStudy.getTitle()} — ${step.explanation}`;
 
-  // Build MusicXML from segment notes with correct measure numbers
-  currentPieceXml = buildMusicXML(
-    currentRightHandNotes,
-    currentLeftHandNotes,
-    {
-      key: music.key,
-      timeSignature: currentTimeSig,
-      startMeasure: music.metadata.startMeasure,
-    }
-  );
-
-  // Update lesson description
-  currentLessonDescription = `${currentPieceStudy.getTitle()} — ${step.explanation}`;
-
-  // Render the music
   renderCurrentMusic();
 }
 
 // Update segment display in UI
 function updateSegmentDisplay() {
   if (!currentPieceStudy) return;
-
   const step = currentPieceStudy.getCurrentStep();
+  const el = (id: string) => document.getElementById(id);
 
-  const lessonInfo = document.getElementById('lessonInfo');
-  if (lessonInfo) {
-    lessonInfo.textContent = currentLessonDescription;
-  }
-
-  const levelDisplay = document.getElementById('levelDisplay');
-  if (levelDisplay) {
-    levelDisplay.textContent = '♪';
-  }
-
-  const levelIndicator = document.getElementById('levelIndicator');
-  if (levelIndicator) {
-    // Show the current window (e.g., "Measure 1" or "Measures 1-2")
-    levelIndicator.textContent = step.explanation;
-  }
-
-  const progressInfo = document.getElementById('progressInfo');
-  if (progressInfo) {
-    if (currentPieceStudy.isSlidingMode) {
-      progressInfo.textContent = `→ to advance (${step.total} measures total)`;
-    } else {
-      progressInfo.textContent = `Use ← → to navigate measures`;
-    }
+  if (el('lessonInfo')) el('lessonInfo')!.textContent = ps.lessonDescription;
+  if (el('levelDisplay')) el('levelDisplay')!.textContent = '♪';
+  if (el('levelIndicator')) el('levelIndicator')!.textContent = step.explanation;
+  if (el('progressInfo')) {
+    el('progressInfo')!.textContent = currentPieceStudy.isSlidingMode
+      ? `→ to advance (${step.total} measures total)`
+      : `Use ← → to navigate measures`;
   }
 }
 
-// Navigate to next segment
 function nextSegment() {
   if (!currentPieceStudy) return;
-  if (isPlaying) stop();
-
-  if (currentPieceStudy.nextStep()) {
-    loadCurrentSegment();
-    updateSegmentDisplay();
-  }
+  if (ps.isPlaying) stop();
+  if (currentPieceStudy.nextStep()) { loadCurrentSegment(); updateSegmentDisplay(); }
 }
 
-// Navigate to previous segment
 function previousSegment() {
   if (!currentPieceStudy) return;
-  if (isPlaying) stop();
-
-  if (currentPieceStudy.previousStep()) {
-    loadCurrentSegment();
-    updateSegmentDisplay();
-  }
+  if (ps.isPlaying) stop();
+  if (currentPieceStudy.previousStep()) { loadCurrentSegment(); updateSegmentDisplay(); }
 }
 
 async function start() {
   await initAudio();
+  ps.startPlayback();
 
-  isPlaying = true;
   const playPauseBtn = document.getElementById('playPause')!;
   playPauseBtn.classList.add('playing');
   playPauseBtn.setAttribute('aria-label', 'Stop');
 
-  currentBeatIndex = 0;
-  mistakeCount = 0;
-
   groupNotesByPosition();
 
-  // Fully reset Tone.js Transport before scheduling
   const transport = Tone.getTransport();
   transport.stop();
   transport.cancel();
   scheduledEvents = [];
-
-  // Force position reset - must happen after stop/cancel
   transport.position = 0;
-  transport.bpm.value = bpm;
+  transport.bpm.value = ps.bpm;
 
-  // Reset debounce timers
-  lastMetronomeTime = 0;
-  lastAdvanceBeatTime = 0;
-
-  const countoffTotal = currentTimeSig.beats;
-  isCountingOff = true;
-  countoffBeats = 0;
-  // Don't show initial number - it will appear on first beat
-
-  scheduleMusic(countoffTotal);
-
-  Tone.getTransport().start();
+  scheduleMusic(ps.timeSig.beats);
+  transport.start();
 }
 
 function scheduleMusic(countoffTotal: number) {
-  // Use timing events from music generator (source of truth for all timing)
-  const events = timingEvents;
+  const events = ps.timingEvents;
+  const lastEvent = events[events.length - 1];
+  const totalDuration = lastEvent ? lastEvent.time + lastEvent.duration : 0;
+  const totalSubdivisions = Math.ceil((countoffTotal + totalDuration) * 4);
 
-  // Calculate total duration of the piece
-  let totalDuration = 0;
-  if (events.length > 0) {
-    const lastEvent = events[events.length - 1];
-    totalDuration = lastEvent.time + lastEvent.duration;
-  }
-
-  const totalBeats = countoffTotal + totalDuration;
-  const totalSubdivisions = Math.ceil(totalBeats * 4);
-
-  // Schedule all metronome clicks and countoff updates using bars:beats:sixteenths
-  // (safe for metronome since it's always on integer subdivisions)
+  // Schedule metronome clicks and countoff
   for (let sub = 0; sub < totalSubdivisions; sub++) {
-    const beatNumber = Math.floor(sub / 4);
+    const beat = Math.floor(sub / 4);
     const subInBeat = sub % 4;
-    const time = `0:${beatNumber}:${subInBeat}`;
-
     const eventId = Tone.getTransport().schedule(() => {
       playMetronomeClick(subInBeat);
-
-      // Handle countoff display updates
-      // Show 4, 3, 2, 1 on each beat (beatNumber 0, 1, 2, 3)
-      if (subInBeat === 0 && beatNumber < countoffTotal) {
-        const displayNumber = countoffTotal - beatNumber;
-        updateCountoffDisplay(displayNumber);
-        countoffBeats = beatNumber + 1;
-        if (countoffBeats >= countoffTotal) {
-          isCountingOff = false;
-          // Hide after a short delay so "1" is visible
+      if (subInBeat === 0 && beat < countoffTotal) {
+        updateCountoffDisplay(countoffTotal - beat);
+        ps.countoffBeats = beat + 1;
+        if (ps.countoffBeats >= countoffTotal) {
+          ps.finishCountoff();
           setTimeout(() => updateCountoffDisplay(0), 200);
         }
       }
-    }, time);
+    }, `0:${beat}:${subInBeat}`);
     scheduledEvents.push(eventId);
   }
 
-  // Schedule note events using timing from music generator
-  for (let i = 0; i < events.length; i++) {
-    const event = events[i];
-    const timeInBeats = countoffTotal + event.time;
-    const timeInSeconds = beatsToSeconds(timeInBeats, bpm);
-
-    // Schedule the note/rest to become current
-    const noteEventId = Tone.getTransport().schedule(() => {
-      advanceBeat();
-    }, timeInSeconds);
-    scheduledEvents.push(noteEventId);
+  // Schedule note events
+  for (const event of events) {
+    const eventId = Tone.getTransport().schedule(() => advanceBeat(), beatsToSeconds(countoffTotal + event.time, ps.bpm));
+    scheduledEvents.push(eventId);
   }
 
-  // Schedule end of piece using seconds
-  const endTimeInSeconds = beatsToSeconds(countoffTotal + totalDuration, bpm);
-  const endEventId = Tone.getTransport().schedule(() => {
-    onPieceComplete();
-  }, endTimeInSeconds);
-  scheduledEvents.push(endEventId);
+  // Schedule end
+  const endId = Tone.getTransport().schedule(() => onPieceComplete(), beatsToSeconds(countoffTotal + totalDuration, ps.bpm));
+  scheduledEvents.push(endId);
 }
 
 function onPieceComplete() {
-  if (!isPlaying) return;
+  if (!ps.isPlaying) return;
 
   // Mark last notes as past
-  const notation = document.getElementById('notation')!;
-  notation.querySelectorAll('.note.current, .rest.current').forEach((el) => {
+  document.getElementById('notation')!.querySelectorAll('.note.current, .rest.current').forEach((el) => {
     el.classList.remove('current');
     el.classList.add('past');
   });
 
-  // Reset tracking for next round
-  mistakeCount = 0;
-  currentBeatIndex = 0;
-
-  // Fully reset Tone.js Transport before scheduling new piece
+  // Reset transport
   Tone.getTransport().stop();
   Tone.getTransport().cancel();
   scheduledEvents = [];
   Tone.getTransport().seconds = 0;
 
-  // Reset debounce timers
-  lastMetronomeTime = 0;
-  lastAdvanceBeatTime = 0;
-
-  // Handle piece study mode separately from sight reading mode
-  if (currentPieceStudy) {
-    onPieceStudySegmentComplete();
-  } else {
-    onSightReadingComplete();
-  }
+  currentPieceStudy ? onPieceStudySegmentComplete() : onSightReadingComplete();
 }
 
-// Handle completion of a piece study segment
 function onPieceStudySegmentComplete() {
   if (!currentPieceStudy) return;
 
-  // Advance to next segment
-  const hasMore = currentPieceStudy.nextStep();
-
-  if (hasMore) {
-    // Load next segment and continue
+  if (currentPieceStudy.nextStep()) {
     loadCurrentSegment();
     updateSegmentDisplay();
-
-    // Start playing the next segment
-    isCountingOff = true;
-    countoffBeats = 0;
-    const countoffTotal = currentTimeSig.beats;
-    scheduleMusic(countoffTotal);
+    ps.startPlayback();
+    scheduleMusic(ps.timeSig.beats);
     Tone.getTransport().start();
   } else {
-    // Piece study complete - stop playing
     stop();
-    const progressInfo = document.getElementById('progressInfo');
-    if (progressInfo) {
-      progressInfo.textContent = 'Complete! Use ← to review.';
-    }
+    const el = document.getElementById('progressInfo');
+    if (el) el.textContent = 'Complete! Use ← to review.';
   }
 }
 
-// Handle completion of sight reading exercise
 function onSightReadingComplete() {
-  // Record analytics
-  const noteCount = currentRightHandNotes.filter(n => !n.isRest).length +
-    currentLeftHandNotes.filter(n => !n.isRest).length;
-  recordAttempt(getLevel(), getSubLevel(), noteCount, mistakeCount);
+  const noteCount = ps.rightHandNotes.filter(n => !n.isRest).length + ps.leftHandNotes.filter(n => !n.isRest).length;
+  recordAttempt(getLevel(), getSubLevel(), noteCount, ps.hadMistake ? 1 : 0);
 
-  // Advance level if no mistakes
-  if (mistakeCount === 0) {
+  if (!ps.hadMistake) {
     incrementLevel();
-    // Auto tempo ramp: increase by 5 BPM on success
-    if (autoTempoRamp && bpm < 180) {
-      bpm += 5;
-      setBpm(bpm);
-      const bpmInput = document.getElementById('bpm') as HTMLInputElement;
-      if (bpmInput) bpmInput.value = String(bpm);
-      Tone.getTransport().bpm.value = bpm;
+    if (autoTempoRamp && ps.bpm < 180) {
+      ps.bpm += 5;
+      setBpm(ps.bpm);
+      (document.getElementById('bpm') as HTMLInputElement).value = String(ps.bpm);
+      Tone.getTransport().bpm.value = ps.bpm;
     }
   }
 
-  // Generate new piece
   generateAndRender();
-
-  // Start playing new piece
-  isCountingOff = true;
-  countoffBeats = 0;
-  const countoffTotal = currentTimeSig.beats;
-  scheduleMusic(countoffTotal);
+  ps.startPlayback();
+  scheduleMusic(ps.timeSig.beats);
   Tone.getTransport().start();
 }
 
@@ -1295,12 +882,10 @@ function updateCountoffDisplay(remaining: number) {
 }
 
 function stop() {
-  isPlaying = false;
-  isCountingOff = false;
+  ps.stopPlayback();
   const playPauseBtn = document.getElementById('playPause')!;
   playPauseBtn.classList.remove('playing');
   playPauseBtn.setAttribute('aria-label', 'Start');
-
   updateCountoffDisplay(0);
 
   Tone.getTransport().stop();
@@ -1308,44 +893,25 @@ function stop() {
   scheduledEvents = [];
   Tone.getTransport().seconds = 0;
 
-  // Reset metronome debounce
-  lastMetronomeTime = 0;
-
-  const notation = document.getElementById('notation')!;
-  notation.querySelectorAll('.note, .rest').forEach((el) => {
+  document.getElementById('notation')!.querySelectorAll('.note, .rest').forEach((el) => {
     el.classList.remove('current', 'correct', 'wrong', 'past');
   });
 }
 
-// Track last beat advance time to prevent double-firing
-let lastAdvanceBeatTime = 0;
-
 function advanceBeat() {
-  // Debounce to prevent double-firing from Tone.js lookahead
-  const now = performance.now();
-  if (now - lastAdvanceBeatTime < 50) {
-    return;
-  }
-  lastAdvanceBeatTime = now;
+  if (!ps.shouldAdvanceBeat()) return;
 
   const notation = document.getElementById('notation')!;
-
-  // Mark previous notes as past
   notation.querySelectorAll('.note.current, .rest.current').forEach((el) => {
     el.classList.remove('current');
     el.classList.add('past');
   });
 
-  if (currentBeatIndex >= visualGroups.length) {
-    return; // onPieceComplete handles the end
-  }
+  if (ps.beatIndex >= ps.visualGroups.length) return;
 
-  const currentGroup = visualGroups[currentBeatIndex];
-
+  const currentGroup = ps.visualGroups[ps.beatIndex];
   currentGroup.elements.forEach((el) => {
     el.classList.add('current');
-
-    // Check if this note was played early
     if (el.getAttribute('data-early-correct') === 'true') {
       el.classList.add('correct');
       el.removeAttribute('data-early-correct');
@@ -1353,14 +919,10 @@ function advanceBeat() {
 
     if (el.classList.contains('note')) {
       const pitch = getNoteDataFromElement(el) ?? 'C4';
-      if (pitch && sampler && sampler.loaded) {
-        // Use longer duration for sustain
-        sampler.triggerAttackRelease(pitch, '2n');
-      }
+      if (pitch && sampler?.loaded) sampler.triggerAttackRelease(pitch, '2n');
     }
   });
-
-  currentBeatIndex++;
+  ps.beatIndex++;
 }
 
 // Start the app
