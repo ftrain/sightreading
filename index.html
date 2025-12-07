@@ -12,8 +12,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <title>Sight Reading Practice</title>
-    <script type="module" crossorigin src="/sightreading/assets/index-Dh0SblK6.js"></script>
-    <link rel="stylesheet" crossorigin href="/sightreading/assets/index-Cy8sJyBG.css">
+    <script type="module" crossorigin src="/sightreading/assets/index-Cf-AefcL.js"></script>
+    <link rel="stylesheet" crossorigin href="/sightreading/assets/index-BR_aSn1Y.css">
   </head>
   <body>
     <div id="app">
@@ -28,6 +28,38 @@
             <span id="levelDisplay" class="level-badge">1a</span>
             <span id="progressInfo" class="progress-text"></span>
           </div>
+        </div>
+
+        <!-- Practice Mode Info Bar (shown when practicing uploaded file) -->
+        <div id="practiceInfo" class="practice-info" hidden>
+          <div class="practice-step">
+            <span id="practiceStepType" class="step-type">Learning</span>
+            <span id="practiceStepDesc" class="step-desc">Measure 1</span>
+          </div>
+          <div class="practice-progress">
+            <span id="practiceStepNum" class="step-num">Step 1 of 24</span>
+            <div class="progress-bar-container" id="practiceProgressContainer" role="slider" aria-label="Practice progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
+              <div class="progress-bar-track">
+                <div id="practiceProgressBar" class="progress-fill" style="width: 0%"></div>
+              </div>
+              <div id="practiceProgressThumb" class="progress-thumb" style="left: 0%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Celebration overlay (shown when piece is complete) -->
+        <div id="celebrationOverlay" class="celebration-overlay" hidden>
+          <div class="celebration-content">
+            <div class="celebration-sparkles"></div>
+            <div class="celebration-text">Complete!</div>
+          </div>
+        </div>
+
+        <!-- Progress bar drag preview tooltip -->
+        <div id="progressPreview" class="progress-preview">
+          <div id="progressPreviewStep" class="progress-preview-step">Learning</div>
+          <div id="progressPreviewDesc" class="progress-preview-desc">Measure 1</div>
+          <div id="progressPreviewNum" class="progress-preview-num">Step 1 of 24</div>
         </div>
 
         <div id="scoreContainer">
@@ -83,6 +115,16 @@
           </button>
         </div>
 
+        <div class="control-section upload">
+          <label class="upload-btn" for="xmlUpload" aria-label="Upload MusicXML file">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 15V3m0 0l-4 4m4-4l4 4" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </label>
+          <input type="file" id="xmlUpload" accept=".xml,.musicxml,.mxl,.mid,.midi" hidden />
+        </div>
+
         <div class="control-section options">
           <button id="optionsToggle" class="options-btn" aria-label="Options" aria-expanded="false">
             <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="12" cy="19" r="2"/></svg>
@@ -99,6 +141,10 @@
 
         <div class="options-group">
           <h3>Playback</h3>
+          <label class="option-row">
+            <span>Master Volume</span>
+            <input type="range" id="masterVolume" min="0" max="100" value="80" />
+          </label>
           <label class="option-row">
             <span>Metronome</span>
             <input type="checkbox" id="metronome" checked />
@@ -159,6 +205,34 @@
             <span>Show Fingering</span>
             <input type="checkbox" id="showFingering" />
           </label>
+        </div>
+
+        <div class="options-group">
+          <h3>Practice Songs</h3>
+          <div class="option-row">
+            <select id="songSelect" aria-label="Select a song to practice">
+              <option value="">Choose a song...</option>
+              <optgroup label="Beginner">
+                <option value="mary-lamb">Mary Had a Little Lamb</option>
+                <option value="twinkle">Twinkle Twinkle Little Star</option>
+                <option value="ode-to-joy">Ode to Joy (Beethoven)</option>
+              </optgroup>
+              <optgroup label="Easy">
+                <option value="happy-birthday">Happy Birthday</option>
+                <option value="minuet-g">Minuet in G (Bach)</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="option-row">
+            <label class="file-upload-label" for="xmlUploadOptions">
+              <span>Or upload file</span>
+              <span class="upload-hint">.xml, .musicxml, .mxl, .mid</span>
+            </label>
+            <input type="file" id="xmlUploadOptions" accept=".xml,.musicxml,.mxl,.mid,.midi" />
+          </div>
+          <button id="exitPracticeMode" class="exit-practice-btn" hidden>
+            Return to Levels
+          </button>
         </div>
 
         <div class="options-group midi-options">
