@@ -50,6 +50,8 @@ interface TimingEvent {
   time: number; // Start time in beats
   duration: number; // Duration in beats
   pitches: string[]; // Pitches to play (e.g., ['C4', 'E4', 'G4'])
+  isTieContinuation?: boolean; // True if ANY pitch is a tied note
+  tiedPitches?: string[]; // Specific pitches that are tied (don't play, check if held)
 }
 let timingEvents: TimingEvent[] = [];
 
@@ -98,6 +100,10 @@ let currentMeasureCount = 4;
 type AppMode = 'levels' | 'practice';
 let currentMode: AppMode = 'levels';
 let practiceSession: ProgressivePracticeSession | null = null;
+
+// Scrolling state for consolidation mode
+let isScrollingMode = false; // True during consolidation steps with many measures
+let currentScrollMeasure = 0; // Current measure being displayed (0-indexed)
 
 
 // Detect mobile device and orientation
@@ -176,9 +182,9 @@ async function init() {
   });
 }
 
-function updateVerovioOptions() {
+function updateVerovioOptions(forScrolling = false) {
   const container = document.getElementById('notation')!;
-  const width = Math.max(800, container.clientWidth - 20);
+  const containerWidth = Math.max(800, container.clientWidth - 20);
 
   // Smaller scale gives more horizontal room for note spacing
   const scale = isMobileMode() ? 35 : 42;
@@ -187,9 +193,14 @@ function updateVerovioOptions() {
   // Otherwise fit all on one line
   const breaks = currentMeasureCount > 4 ? 'encoded' : 'none';
 
+  // Estimate page height needed: ~180px per system at scale 42
+  // Each system is 4 measures, so number of systems = ceil(measureCount / 4)
+  const systemCount = Math.ceil(currentMeasureCount / 4);
+  const estimatedHeight = Math.max(800, systemCount * 180 * (scale / 42));
+
   toolkit.setOptions({
-    pageWidth: width,
-    pageHeight: 800,
+    pageWidth: containerWidth,
+    pageHeight: estimatedHeight,
     scale: scale,
     adjustPageHeight: true,
     footer: 'none',
@@ -200,6 +211,8 @@ function updateVerovioOptions() {
     spacingLinear: 0.3,
     spacingStaff: 6,
     spacingSystem: 4,
+    // For scrolling mode, don't justify - let measures have natural width
+    justifyVertically: forScrolling ? false : true,
   });
 }
 
@@ -209,7 +222,7 @@ function rerenderCurrentMusic() {
   toolkit.loadData(currentPieceXml);
 
   // Rebuild MEI ID mapping (Verovio generates new IDs each time it loads)
-  const mei = toolkit.getMEI();
+  const mei = (toolkit as unknown as { getMEI: () => string }).getMEI();
   buildMeiIdMapping(mei);
 
   const svg = toolkit.renderToSVG(1);
@@ -358,7 +371,7 @@ function renderCurrentMusic() {
 
   // Get MEI to extract Verovio's generated IDs
   // Verovio preserves IDs from MEI → SVG, but generates new IDs when converting MusicXML → MEI
-  const mei = toolkit.getMEI();
+  const mei = (toolkit as unknown as { getMEI: () => string }).getMEI();
   buildMeiIdMapping(mei);
 
   const svg = toolkit.renderToSVG(1);
@@ -497,17 +510,17 @@ function buildMeiIdMapping(meiString: string) {
 
 // Build timing events from the generated note data
 // This is the source of truth for durations
-// Handles ties: notes with tieEnd=true are continuations and don't require new attacks
+// Handles ties: notes with tieEnd=true are continuations (check if key is held, no new attack)
 function buildTimingEvents() {
   timingEvents = [];
 
-  // Build a map of time -> { duration, pitches } from source note data
-  // This is the source of truth for what to play and when
+  // Build a map of time -> { duration, pitches, tiedPitches } from source note data
   const roundTime = (t: number) => Math.round(t * 1000) / 1000;
 
   interface EventData {
     duration: number;
     pitches: string[];
+    tiedPitches: string[]; // Pitches that are tie continuations (don't play, check if held)
   }
   const allEvents: Map<string, EventData> = new Map();
 
@@ -515,15 +528,8 @@ function buildTimingEvents() {
   let currentTime = 0;
   for (const note of currentRightHandNotes) {
     const timeKey = String(roundTime(currentTime));
-
-    // Skip tied notes (continuations) - they don't create new attacks
-    // But still advance time
-    if (note.tieEnd) {
-      currentTime += note.duration;
-      continue;
-    }
-
     const pitches = getAllPitchesFromNote(note);
+    const isTieContinuation = note.tieEnd === true;
 
     const existing = allEvents.get(timeKey);
     if (existing) {
@@ -531,10 +537,15 @@ function buildTimingEvents() {
       existing.pitches.push(...pitches);
       // Use shortest duration at this time
       if (note.duration < existing.duration) existing.duration = note.duration;
+      // Track tied pitches separately
+      if (isTieContinuation && !note.isRest) {
+        existing.tiedPitches.push(...pitches);
+      }
     } else {
       allEvents.set(timeKey, {
         duration: note.duration,
         pitches: [...pitches],
+        tiedPitches: isTieContinuation && !note.isRest ? [...pitches] : [],
       });
     }
     currentTime += note.duration;
@@ -544,23 +555,22 @@ function buildTimingEvents() {
   currentTime = 0;
   for (const note of currentLeftHandNotes) {
     const timeKey = String(roundTime(currentTime));
-
-    // Skip tied notes (continuations) - they don't create new attacks
-    if (note.tieEnd) {
-      currentTime += note.duration;
-      continue;
-    }
-
     const pitches = getAllPitchesFromNote(note);
+    const isTieContinuation = note.tieEnd === true;
 
     const existing = allEvents.get(timeKey);
     if (existing) {
       existing.pitches.push(...pitches);
       if (note.duration < existing.duration) existing.duration = note.duration;
+      // Track tied pitches separately
+      if (isTieContinuation && !note.isRest) {
+        existing.tiedPitches.push(...pitches);
+      }
     } else {
       allEvents.set(timeKey, {
         duration: note.duration,
         pitches: [...pitches],
+        tiedPitches: isTieContinuation && !note.isRest ? [...pitches] : [],
       });
     }
     currentTime += note.duration;
@@ -575,7 +585,20 @@ function buildTimingEvents() {
     const eventData = allEvents.get(timeKey)!;
     const nextTime = i < sortedTimes.length - 1 ? sortedTimes[i + 1] : time + eventData.duration;
     const duration = nextTime - time;
-    timingEvents.push({ time, duration, pitches: eventData.pitches });
+    const hasTiedPitches = eventData.tiedPitches.length > 0;
+    timingEvents.push({
+      time,
+      duration,
+      pitches: eventData.pitches,
+      isTieContinuation: hasTiedPitches,
+      tiedPitches: hasTiedPitches ? eventData.tiedPitches : undefined,
+    });
+  }
+
+  // Expose for E2E testing (used by tie continuation tests)
+  if (typeof window !== 'undefined') {
+    (window as unknown as Record<string, unknown>).__timingEvents = timingEvents;
+    (window as unknown as Record<string, unknown>).__currentRightHandNotes = currentRightHandNotes;
   }
 }
 
@@ -1403,14 +1426,44 @@ function advanceBeat() {
     }
   }
 
-  // Play pitches from source data (timingEvents), NOT from Verovio SVG
-  const pitchesPlayed = timingEvent?.pitches ?? [];
+  // For tie continuations, check if user is still holding the tied notes
+  // If so, auto-mark as correct (they held through the tie)
+  // But still play any NEW pitches at this time (e.g., LH new attack while RH is tied)
+  const tiedPitches = timingEvent.tiedPitches || [];
 
-  if (sampler && sampler.loaded && pitchesPlayed.length > 0) {
-    for (const pitch of pitchesPlayed) {
+  if (tiedPitches.length > 0) {
+    // Check if all TIED pitches are currently held
+    const allTiedHeld = tiedPitches.every(pitch => {
+      const normalized = normalizeNote(pitch);
+      // Check if any active note matches (account for enharmonic equivalents)
+      return Array.from(activeNotes).some(active => normalizeNote(active) === normalized);
+    });
+
+    if (allTiedHeld) {
+      // Mark all current note elements as correct
+      for (const noteId of noteIds) {
+        const noteEl = document.getElementById(noteId);
+        if (noteEl && !noteEl.classList.contains('correct')) {
+          noteEl.classList.add('correct');
+          notesPlayed++; // Track that user held this note correctly
+        }
+      }
+    }
+  }
+
+  // Play pitches from source data (timingEvents), NOT from Verovio SVG
+  // But skip tied pitches - they're still ringing from the previous attack
+  const allPitches = timingEvent?.pitches ?? [];
+  const pitchesToPlay = allPitches.filter(p => !tiedPitches.includes(p));
+
+  if (sampler && sampler.loaded && pitchesToPlay.length > 0) {
+    for (const pitch of pitchesToPlay) {
       sampler.triggerAttackRelease(pitch, '2n');
     }
   }
+
+  // Update scroll position if in scrolling mode
+  updateScrollPosition(timingEvent.time);
 
   currentBeatIndex++;
 }
@@ -1452,6 +1505,131 @@ function getAllPitchesFromNote(note: NoteData): string[] {
   }
 
   return pitches;
+}
+
+// ============================================
+// SCROLLING FOR CONSOLIDATION MODE
+// ============================================
+
+/**
+ * Calculate which measure we're currently in based on beat time.
+ * Returns 0-indexed measure number.
+ */
+function getMeasureFromTime(time: number): number {
+  const beatsPerMeasure = currentTimeSig.beats;
+  return Math.floor(time / beatsPerMeasure);
+}
+
+/**
+ * Set up scrolling mode for consolidation steps.
+ * Enables vertical scrolling through the piece, showing one system at a time.
+ */
+function setupScrollingMode() {
+  const notation = document.getElementById('notation');
+  if (!notation) return;
+
+  const svg = notation.querySelector('svg') as SVGSVGElement | null;
+  if (!svg) return;
+
+  // Get the SVG's intrinsic dimensions
+  const widthAttr = svg.getAttribute('width');
+  const heightAttr = svg.getAttribute('height');
+  if (widthAttr && heightAttr) {
+    const intrinsicWidth = parseInt(widthAttr, 10);
+    const intrinsicHeight = parseInt(heightAttr, 10);
+
+    // Add viewBox for proper scaling
+    if (!svg.getAttribute('viewBox')) {
+      svg.setAttribute('viewBox', `0 0 ${intrinsicWidth} ${intrinsicHeight}`);
+    }
+
+    // Calculate the scaled height based on container width
+    const containerWidth = notation.clientWidth;
+    const scaledHeight = (containerWidth / intrinsicWidth) * intrinsicHeight;
+
+    // Set explicit height on SVG so it overflows the container (enabling scroll)
+    svg.style.height = `${scaledHeight}px`;
+  }
+
+  // Add scrolling container class
+  notation.classList.add('scrolling-mode');
+  isScrollingMode = true;
+  currentScrollMeasure = 0;
+
+  // Initial scroll position - show from the top
+  scrollToMeasure(0, false);
+}
+
+/**
+ * Exit scrolling mode and reset scroll position.
+ */
+function exitScrollingMode() {
+  const notation = document.getElementById('notation');
+  if (!notation) return;
+
+  notation.classList.remove('scrolling-mode');
+  notation.scrollTop = 0;
+  isScrollingMode = false;
+  currentScrollMeasure = 0;
+}
+
+/**
+ * Scroll to show a specific measure.
+ * Scrolls vertically so the system containing the measure is visible.
+ * @param measureIndex - 0-indexed measure to scroll to
+ * @param smooth - Whether to animate the scroll
+ */
+function scrollToMeasure(measureIndex: number, smooth = true) {
+  if (!isScrollingMode) return;
+
+  const notation = document.getElementById('notation');
+  const svg = notation?.querySelector('svg') as SVGSVGElement | null;
+  if (!notation || !svg) return;
+
+  // Find all measure elements in the SVG
+  const measures = svg.querySelectorAll('.measure');
+  if (measures.length === 0) return;
+
+  // Clamp measure index
+  const targetMeasure = Math.min(Math.max(0, measureIndex), measures.length - 1);
+
+  // Don't scroll if we're on the same measure (unless initial)
+  if (targetMeasure === currentScrollMeasure && smooth) return;
+  currentScrollMeasure = targetMeasure;
+
+  // Get the target measure element
+  const targetEl = measures[targetMeasure] as SVGGElement;
+  if (!targetEl) return;
+
+  // Get the measure's bounding rect relative to the notation container
+  const measureRect = targetEl.getBoundingClientRect();
+  const notationRect = notation.getBoundingClientRect();
+
+  // Calculate where we need to scroll to show this measure
+  // We want the measure to be near the top of the visible area with some padding
+  const padding = 20; // pixels from top
+  const targetScrollTop = notation.scrollTop + (measureRect.top - notationRect.top) - padding;
+
+  // Scroll smoothly
+  notation.scrollTo({
+    top: Math.max(0, targetScrollTop),
+    behavior: smooth ? 'smooth' : 'instant',
+  });
+}
+
+/**
+ * Update scroll position based on current playback time.
+ * Called from advanceBeat when in scrolling mode.
+ */
+function updateScrollPosition(time: number) {
+  if (!isScrollingMode) return;
+
+  const currentMeasure = getMeasureFromTime(time);
+
+  // Scroll when we move to a new measure
+  if (currentMeasure !== currentScrollMeasure) {
+    scrollToMeasure(currentMeasure);
+  }
 }
 
 // ============================================
@@ -1903,6 +2081,9 @@ function setupProgressBarDrag() {
 function renderPracticeStep() {
   if (!practiceSession) return;
 
+  // Exit any previous scrolling mode
+  exitScrollingMode();
+
   const step = practiceSession.getCurrentStep();
   const segment = practiceSession.getCurrentSegment();
   const timeSig = practiceSession.getTimeSignature();
@@ -1914,26 +2095,38 @@ function renderPracticeStep() {
   currentTimeSig = timeSig;
   currentMeasureCount = step.measures.length;
 
+  // Check if this is a consolidation step with many measures - enable scrolling
+  const shouldScroll = step.type === 'consolidate' && step.measures.length > 4;
+
   // Build MusicXML for this segment
-  // Add system breaks every 4 measures if there are more than 4
+  // For scrolling mode: break every 2 measures for better readability
+  // Otherwise: break every 4 measures for pieces with more than 4 measures
   const result = buildMusicXML(
     segment.rightHand,
     segment.leftHand,
     {
       timeSignature: timeSig,
       key: keySig,
-      systemBreakEvery: currentMeasureCount > 4 ? 4 : 0,
+      systemBreakEvery: shouldScroll ? 2 : (currentMeasureCount > 4 ? 4 : 0),
     }
   );
   currentPieceXml = result.xml;
   currentNoteIdMapping = result.noteIdMapping;
 
   // Update Verovio options based on measure count (for line breaks)
-  updateVerovioOptions();
+  updateVerovioOptions(shouldScroll);
 
   // Render
   renderCurrentMusic();
   updatePracticeDisplay();
+
+  // Set up scrolling mode for consolidation steps with many measures
+  if (shouldScroll) {
+    // Use requestAnimationFrame to ensure SVG is rendered first
+    requestAnimationFrame(() => {
+      setupScrollingMode();
+    });
+  }
 }
 
 // ============================================

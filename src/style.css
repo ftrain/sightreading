@@ -175,6 +175,23 @@ body {
 }
 
 /* ============================================
+   SCROLLING MODE (CONSOLIDATION)
+   Shows a fixed height viewport with vertical scrolling
+   ============================================ */
+#notation.scrolling-mode {
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: calc(100vh - 280px); /* Use available vertical space */
+}
+
+#notation.scrolling-mode svg {
+  /* Scale SVG to full width while preserving aspect ratio */
+  /* The viewBox is added dynamically in setupScrollingMode() */
+  width: 100%;
+  height: auto;
+}
+
+/* ============================================
    COUNTOFF DISPLAY
    ============================================ */
 #countoff {

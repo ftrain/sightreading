@@ -10,7 +10,7 @@
 // - NEW KEYS RESET TO BASICS - introduce key with whole notes first
 // - TEMPO is separate from note complexity - master slow before fast
 
-import { generateFingering, type Finger } from './fingeringEngine';
+import { generateFingering } from './fingeringEngine';
 import { buildMusicXML, type NoteIdMapping } from './music/xml/builder';
 
 // Global setting for whether to include fingering in notation
@@ -304,6 +304,10 @@ export interface NoteData {
   isRest: boolean;
   // For chords: additional notes played simultaneously
   chordNotes?: Array<{ step: string; alter: number; octave: number }>;
+  // Tie start: this note ties to the next note of the same pitch
+  tieStart?: boolean;
+  // Tie end: this note is tied from the previous note (no new attack)
+  tieEnd?: boolean;
 }
 
 // ============================================
@@ -932,10 +936,6 @@ function getLevelConfig(level: number, subLevel: number): LevelConfig {
 // ============================================
 // MELODY GENERATION
 // ============================================
-interface BeamState {
-  inBeam: boolean;
-  beamNumber: number;
-}
 
 /**
  * Get chord notes to add to a root note based on configuration
@@ -1269,127 +1269,3 @@ export function generateMusicXML(): GeneratedMusic {
   };
 }
 
-function noteToXML(
-  note: NoteData,
-  staff: number,
-  divisions: number,
-  beamState: BeamState,
-  nextNote: NoteData | null,
-  finger?: Finger
-): string {
-  const dur = Math.round(note.duration * divisions);
-
-  if (note.isRest) {
-    beamState.inBeam = false;
-    return `      <note>
-        <rest/>
-        <duration>${dur}</duration>
-        ${getNoteType(note.duration)}
-        <staff>${staff}</staff>
-      </note>
-`;
-  }
-
-  let alterXml = '';
-  if (note.alter !== 0) {
-    alterXml = `          <alter>${note.alter}</alter>\n`;
-  }
-
-  let accidentalXml = '';
-  if (note.alter === 1) {
-    accidentalXml = `        <accidental>sharp</accidental>\n`;
-  } else if (note.alter === -1) {
-    accidentalXml = `        <accidental>flat</accidental>\n`;
-  }
-
-  // Beam logic for eighth notes and shorter
-  let beamXml = '';
-  const isBeamable = note.duration <= 0.5;
-  const nextIsBeamable = nextNote && !nextNote.isRest && nextNote.duration <= 0.5;
-
-  if (isBeamable) {
-    if (!beamState.inBeam && nextIsBeamable) {
-      beamState.inBeam = true;
-      beamState.beamNumber++;
-      beamXml = `        <beam number="1">begin</beam>\n`;
-    } else if (beamState.inBeam && nextIsBeamable) {
-      beamXml = `        <beam number="1">continue</beam>\n`;
-    } else if (beamState.inBeam && !nextIsBeamable) {
-      beamState.inBeam = false;
-      beamXml = `        <beam number="1">end</beam>\n`;
-    }
-  } else {
-    beamState.inBeam = false;
-  }
-
-  // Fingering notation (optional)
-  let fingeringXml = '';
-  if (finger !== undefined && includeFingering) {
-    // placement: above for treble (staff 1), below for bass (staff 2)
-    const placement = staff === 1 ? 'above' : 'below';
-    fingeringXml = `        <notations>
-          <technical>
-            <fingering placement="${placement}">${finger}</fingering>
-          </technical>
-        </notations>
-`;
-  }
-
-  // Main note XML
-  let xml = `      <note>
-        <pitch>
-          <step>${note.step}</step>
-${alterXml}          <octave>${note.octave}</octave>
-        </pitch>
-        <duration>${dur}</duration>
-        ${getNoteType(note.duration)}
-${accidentalXml}${beamXml}        <staff>${staff}</staff>
-${fingeringXml}      </note>
-`;
-
-  // Add chord notes if present (they get <chord/> element to indicate simultaneity)
-  if (note.chordNotes && note.chordNotes.length > 0) {
-    for (const chordNote of note.chordNotes) {
-      let chordAlterXml = '';
-      if (chordNote.alter !== 0) {
-        chordAlterXml = `          <alter>${chordNote.alter}</alter>\n`;
-      }
-
-      let chordAccidentalXml = '';
-      if (chordNote.alter === 1) {
-        chordAccidentalXml = `        <accidental>sharp</accidental>\n`;
-      } else if (chordNote.alter === -1) {
-        chordAccidentalXml = `        <accidental>flat</accidental>\n`;
-      }
-
-      xml += `      <note>
-        <chord/>
-        <pitch>
-          <step>${chordNote.step}</step>
-${chordAlterXml}          <octave>${chordNote.octave}</octave>
-        </pitch>
-        <duration>${dur}</duration>
-        ${getNoteType(note.duration)}
-${chordAccidentalXml}        <staff>${staff}</staff>
-      </note>
-`;
-    }
-  }
-
-  return xml;
-}
-
-function getNoteType(duration: number): string {
-  // Handle dotted notes: dotted half = 3, dotted quarter = 1.5, dotted eighth = 0.75
-  if (duration === 3) return '<type>half</type>\n        <dot/>';
-  if (duration === 1.5) return '<type>quarter</type>\n        <dot/>';
-  if (duration === 0.75) return '<type>eighth</type>\n        <dot/>';
-
-  // Standard durations
-  if (duration >= 4) return '<type>whole</type>';
-  if (duration >= 2) return '<type>half</type>';
-  if (duration >= 1) return '<type>quarter</type>';
-  if (duration >= 0.5) return '<type>eighth</type>';
-  if (duration >= 0.25) return '<type>16th</type>';
-  return '<type>16th</type>';
-}

@@ -39,21 +39,19 @@ export interface TieGroup {
 // ============================================
 
 /**
- * Check if a measure's notes end with a tie start (ties into next measure).
+ * Check if any note in a measure has a tie start (ties into next measure).
+ * A whole note at the beginning of a measure that ties forward would have tieStart.
  */
-function measureEndsWithTie(notes: NoteData[]): boolean {
-  if (notes.length === 0) return false;
-  const lastNote = notes[notes.length - 1];
-  return lastNote.tieStart === true;
+function measureHasTieStart(notes: NoteData[]): boolean {
+  return notes.some(note => note.tieStart === true);
 }
 
 /**
- * Check if a measure's notes start with a tie end (tied from previous measure).
+ * Check if any note in a measure has a tie end (tied from previous measure).
+ * This indicates the measure receives a tie from the previous measure.
  */
-function measureStartsWithTie(notes: NoteData[]): boolean {
-  if (notes.length === 0) return false;
-  const firstNote = notes[0];
-  return firstNote.tieEnd === true;
+function measureHasTieEnd(notes: NoteData[]): boolean {
+  return notes.some(note => note.tieEnd === true);
 }
 
 /**
@@ -81,24 +79,24 @@ export function findTieGroups(measures: MeasureNotes[]): TieGroup[] {
     const measureNum = i + 1; // 1-indexed
     const measure = measures[i];
 
-    // Check if this measure ends with a tie (either hand)
-    const endsWithTie =
-      measureEndsWithTie(measure.rightHand) ||
-      measureEndsWithTie(measure.leftHand);
+    // Check if this measure has a tie that continues to next measure (either hand)
+    const hasTieStart =
+      measureHasTieStart(measure.rightHand) ||
+      measureHasTieStart(measure.leftHand);
 
-    // Check if this measure starts with a tie (either hand)
-    const startsWithTie =
-      measureStartsWithTie(measure.rightHand) ||
-      measureStartsWithTie(measure.leftHand);
+    // Check if this measure has a tie from previous measure (either hand)
+    const hasTieEnd =
+      measureHasTieEnd(measure.rightHand) ||
+      measureHasTieEnd(measure.leftHand);
 
-    if (startsWithTie && currentGroupStart === null) {
+    if (hasTieEnd && currentGroupStart === null) {
       // This measure is tied from previous but we didn't track the start
       // This can happen if the tie starts in measure 1
       // We'll assume the group starts from the previous measure
       currentGroupStart = Math.max(1, measureNum - 1);
     }
 
-    if (currentGroupStart !== null && !endsWithTie) {
+    if (currentGroupStart !== null && !hasTieStart) {
       // The group ends here (this measure doesn't tie forward)
       if (measureNum > currentGroupStart) {
         groups.push({
@@ -107,11 +105,11 @@ export function findTieGroups(measures: MeasureNotes[]): TieGroup[] {
         });
       }
       currentGroupStart = null;
-    } else if (endsWithTie && currentGroupStart === null) {
+    } else if (hasTieStart && currentGroupStart === null) {
       // Start a new group
       currentGroupStart = measureNum;
     }
-    // If endsWithTie && currentGroupStart !== null, continue the group
+    // If hasTieStart && currentGroupStart !== null, continue the group
   }
 
   // Handle unclosed group at end of piece

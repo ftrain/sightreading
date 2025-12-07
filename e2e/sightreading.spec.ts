@@ -874,3 +874,100 @@ test.describe('Built-in Song SVG Timing', () => {
     expect(timeSigElement).toBeGreaterThan(0);
   });
 });
+
+test.describe('Tie Continuation', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('#notation svg', { timeout: 10000 });
+  });
+
+  test('buildTimingEvents should mark tie continuations', async ({ page }) => {
+    // MusicXML with a tie - simpler test that just checks timing events via file upload
+    const xmlWithTie = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="4.0">
+  <part-list>
+    <score-part id="P1"><part-name print-object="no">Piano</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <staves>2</staves>
+        <clef number="1"><sign>G</sign><line>2</line></clef>
+        <clef number="2"><sign>F</sign><line>4</line></clef>
+      </attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><type>half</type><staff>1</staff></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>2</duration><type>half</type><staff>1</staff>
+        <tie type="start"/>
+        <notations><tied type="start"/></notations>
+      </note>
+      <backup><duration>4</duration></backup>
+      <note><rest/><duration>4</duration><type>whole</type><staff>2</staff></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>2</duration><type>half</type><staff>1</staff>
+        <tie type="stop"/>
+        <notations><tied type="stop"/></notations>
+      </note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><type>half</type><staff>1</staff></note>
+      <backup><duration>4</duration></backup>
+      <note><rest/><duration>4</duration><type>whole</type><staff>2</staff></note>
+    </measure>
+  </part>
+</score-partwise>`;
+
+    // Upload file via the file input
+    const fileInput = page.locator('#xmlUpload');
+
+    // Create a temporary file and upload it
+    const buffer = Buffer.from(xmlWithTie, 'utf-8');
+    await fileInput.setInputFiles({
+      name: 'test-tie.xml',
+      mimeType: 'application/xml',
+      buffer: buffer,
+    });
+
+    // Wait for practice mode to activate (practiceInfo becomes visible)
+    await page.waitForSelector('#practiceInfo:not([hidden])', { timeout: 5000 });
+    await page.waitForTimeout(500);
+
+    // Get the timing events and raw notes from window
+    const result = await page.evaluate(() => {
+      const win = window as unknown as Record<string, unknown>;
+      return {
+        timingEvents: win.__timingEvents as Array<{
+          time: number;
+          duration: number;
+          pitches: string[];
+          isTieContinuation?: boolean;
+        }>,
+        rightHandNotes: (win.__currentRightHandNotes as Array<{
+          step: string;
+          octave: number;
+          duration: number;
+          tieStart?: boolean;
+          tieEnd?: boolean;
+        }>) || [],
+      };
+    });
+
+    console.log('Right hand notes:', JSON.stringify(result.rightHandNotes, null, 2));
+    console.log('Timing events:', JSON.stringify(result.timingEvents, null, 2));
+
+    const timingEvents = result.timingEvents;
+
+    // Should have events
+    expect(timingEvents.length).toBeGreaterThan(0);
+
+    // Find the tie continuation event (E4 at beat 4, the tied note in measure 2)
+    const tieContinuationEvent = timingEvents.find(e => e.isTieContinuation === true);
+
+    console.log('Tie continuation event:', tieContinuationEvent);
+
+    // This is the key assertion: we should have a timing event marked as tie continuation
+    expect(tieContinuationEvent).toBeDefined();
+    expect(tieContinuationEvent?.pitches).toContain('E4');
+  });
+});
