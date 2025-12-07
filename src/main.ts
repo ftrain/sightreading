@@ -497,6 +497,7 @@ function buildMeiIdMapping(meiString: string) {
 
 // Build timing events from the generated note data
 // This is the source of truth for durations
+// Handles ties: notes with tieEnd=true are continuations and don't require new attacks
 function buildTimingEvents() {
   timingEvents = [];
 
@@ -514,6 +515,14 @@ function buildTimingEvents() {
   let currentTime = 0;
   for (const note of currentRightHandNotes) {
     const timeKey = String(roundTime(currentTime));
+
+    // Skip tied notes (continuations) - they don't create new attacks
+    // But still advance time
+    if (note.tieEnd) {
+      currentTime += note.duration;
+      continue;
+    }
+
     const pitches = getAllPitchesFromNote(note);
 
     const existing = allEvents.get(timeKey);
@@ -535,6 +544,13 @@ function buildTimingEvents() {
   currentTime = 0;
   for (const note of currentLeftHandNotes) {
     const timeKey = String(roundTime(currentTime));
+
+    // Skip tied notes (continuations) - they don't create new attacks
+    if (note.tieEnd) {
+      currentTime += note.duration;
+      continue;
+    }
+
     const pitches = getAllPitchesFromNote(note);
 
     const existing = allEvents.get(timeKey);

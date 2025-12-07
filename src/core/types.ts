@@ -38,6 +38,10 @@ export interface NoteData {
   isRest: boolean;
   /** Additional notes played simultaneously (for chords) */
   chordNotes?: ChordNote[];
+  /** Tie start: this note ties to the next note of the same pitch */
+  tieStart?: boolean;
+  /** Tie end: this note is tied from the previous note (no new attack) */
+  tieEnd?: boolean;
 }
 
 /**

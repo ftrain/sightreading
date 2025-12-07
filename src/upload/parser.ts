@@ -144,6 +144,10 @@ function flattenTimedNotes(timedNotes: TimedNote[]): NoteData[] {
         isRest: false,
       };
 
+      // Preserve tie info from the primary note
+      if (nonRests[0].tieStart) primary.tieStart = true;
+      if (nonRests[0].tieEnd) primary.tieEnd = true;
+
       // Add additional notes as chord notes
       if (nonRests.length > 1) {
         primary.chordNotes = nonRests.slice(1).map(n => ({
@@ -333,6 +337,16 @@ export function parseMusicXML(xmlString: string): ParsedMusicXML {
             duration = 1; // Default to quarter note
           }
 
+          // Detect ties - MusicXML uses <tie type="start"/> and <tie type="stop"/>
+          const tieElements = child.getElementsByTagName('tie');
+          let tieStart = false;
+          let tieEnd = false;
+          for (const tieEl of tieElements) {
+            const tieType = tieEl.getAttribute('type');
+            if (tieType === 'start') tieStart = true;
+            if (tieType === 'stop') tieEnd = true;
+          }
+
           // Calculate start time
           // Chord notes share the previous note's start time (don't advance time)
           const noteStartTime = isChord ? Math.max(0, currentTime - duration) : currentTime;
@@ -367,6 +381,8 @@ export function parseMusicXML(xmlString: string): ParsedMusicXML {
                 duration,
                 isRest: false,
                 startTime: noteStartTime,
+                tieStart,
+                tieEnd,
               };
 
               if (staffNum === 1) {

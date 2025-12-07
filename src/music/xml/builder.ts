@@ -161,16 +161,38 @@ function noteToXML(
     beamState.inBeam = false;
   }
 
-  // Fingering notation
-  let fingeringXml = '';
-  if (finger !== undefined) {
-    const placement = staff === 1 ? 'above' : 'below';
-    fingeringXml = `        <notations>
-          <technical>
-            <fingering placement="${placement}">${finger}</fingering>
-          </technical>
-        </notations>
-`;
+  // Tie elements (sound)
+  let tieXml = '';
+  if (note.tieEnd) {
+    tieXml += `        <tie type="stop"/>\n`;
+  }
+  if (note.tieStart) {
+    tieXml += `        <tie type="start"/>\n`;
+  }
+
+  // Build notations block (fingering and/or ties)
+  let notationsXml = '';
+  const hasNotations = finger !== undefined || note.tieStart || note.tieEnd;
+  if (hasNotations) {
+    notationsXml = `        <notations>\n`;
+
+    // Tied elements (visual) - must come before technical
+    if (note.tieEnd) {
+      notationsXml += `          <tied type="stop"/>\n`;
+    }
+    if (note.tieStart) {
+      notationsXml += `          <tied type="start"/>\n`;
+    }
+
+    // Fingering
+    if (finger !== undefined) {
+      const placement = staff === 1 ? 'above' : 'below';
+      notationsXml += `          <technical>\n`;
+      notationsXml += `            <fingering placement="${placement}">${finger}</fingering>\n`;
+      notationsXml += `          </technical>\n`;
+    }
+
+    notationsXml += `        </notations>\n`;
   }
 
   // Main note XML
@@ -180,9 +202,9 @@ function noteToXML(
 ${alterXml}          <octave>${note.octave}</octave>
         </pitch>
         <duration>${dur}</duration>
-        ${getNoteType(note.duration)}
+${tieXml}        ${getNoteType(note.duration)}
 ${accidentalXml}${beamXml}        <staff>${staff}</staff>
-${fingeringXml}      </note>
+${notationsXml}      </note>
 `;
 
   // Add chord notes if present

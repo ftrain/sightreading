@@ -17,10 +17,15 @@ export {
 
 export {
   generateSteps,
+  generateStepsWithTies,
+  findTieGroups,
+  expandRangeForTies,
   getStepTypeLabel,
   getStepDescription,
   type PracticeStep,
   type StepType,
+  type TieGroup,
+  type MeasureNotes,
 } from './steps';
 
 export {

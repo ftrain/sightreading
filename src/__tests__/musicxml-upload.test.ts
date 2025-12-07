@@ -338,6 +338,105 @@ const FORWARD_ELEMENT = `<?xml version="1.0" encoding="UTF-8"?>
   </part>
 </score-partwise>`;
 
+/**
+ * Tie across bar line - half note tied to half note.
+ * The second note has tie type="stop" and should not create a new attack.
+ */
+const TIE_ACROSS_BARLINE = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="4.0">
+  <part-list>
+    <score-part id="P1"><part-name>Piano</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <staves>2</staves>
+        <clef number="1"><sign>G</sign><line>2</line></clef>
+        <clef number="2"><sign>F</sign><line>4</line></clef>
+      </attributes>
+      <!-- Beat 1-2: half note -->
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><type>half</type><staff>1</staff></note>
+      <!-- Beat 3-4: half note tied to next measure -->
+      <note>
+        <pitch><step>E</step><octave>4</octave></pitch>
+        <duration>2</duration>
+        <tie type="start"/>
+        <type>half</type>
+        <staff>1</staff>
+        <notations><tied type="start"/></notations>
+      </note>
+      <backup><duration>4</duration></backup>
+      <note><rest/><duration>4</duration><type>whole</type><staff>2</staff></note>
+    </measure>
+    <measure number="2">
+      <!-- Beat 1-2: tied from previous measure -->
+      <note>
+        <pitch><step>E</step><octave>4</octave></pitch>
+        <duration>2</duration>
+        <tie type="stop"/>
+        <type>half</type>
+        <staff>1</staff>
+        <notations><tied type="stop"/></notations>
+      </note>
+      <!-- Beat 3-4: new half note -->
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><type>half</type><staff>1</staff></note>
+      <backup><duration>4</duration></backup>
+      <note><rest/><duration>4</duration><type>whole</type><staff>2</staff></note>
+    </measure>
+  </part>
+</score-partwise>`;
+
+/**
+ * Tie within measure - quarter note tied to quarter note.
+ */
+const TIE_WITHIN_MEASURE = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="4.0">
+  <part-list>
+    <score-part id="P1"><part-name>Piano</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <staves>2</staves>
+        <clef number="1"><sign>G</sign><line>2</line></clef>
+        <clef number="2"><sign>F</sign><line>4</line></clef>
+      </attributes>
+      <!-- Beat 1: quarter note C -->
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type><staff>1</staff></note>
+      <!-- Beat 2: quarter note D tied to beat 3 -->
+      <note>
+        <pitch><step>D</step><octave>4</octave></pitch>
+        <duration>1</duration>
+        <tie type="start"/>
+        <type>quarter</type>
+        <staff>1</staff>
+        <notations><tied type="start"/></notations>
+      </note>
+      <!-- Beat 3: continuation of D (tie stop) -->
+      <note>
+        <pitch><step>D</step><octave>4</octave></pitch>
+        <duration>1</duration>
+        <tie type="stop"/>
+        <type>quarter</type>
+        <staff>1</staff>
+        <notations><tied type="stop"/></notations>
+      </note>
+      <!-- Beat 4: quarter note E -->
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type><staff>1</staff></note>
+      <backup><duration>4</duration></backup>
+      <note><rest/><duration>4</duration><type>whole</type><staff>2</staff></note>
+    </measure>
+  </part>
+</score-partwise>`;
+
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
@@ -386,6 +485,13 @@ function buildTimingEvents(rightHandNotes: NoteData[], leftHandNotes: NoteData[]
   let currentTime = 0;
   for (const note of rightHandNotes) {
     const timeKey = String(roundTime(currentTime));
+
+    // Skip tied notes (continuations) - they don't create new attacks
+    if (note.tieEnd) {
+      currentTime += note.duration;
+      continue;
+    }
+
     const pitch = noteDataToPitch(note);
 
     const existing = allEvents.get(timeKey);
@@ -414,6 +520,13 @@ function buildTimingEvents(rightHandNotes: NoteData[], leftHandNotes: NoteData[]
   currentTime = 0;
   for (const note of leftHandNotes) {
     const timeKey = String(roundTime(currentTime));
+
+    // Skip tied notes (continuations) - they don't create new attacks
+    if (note.tieEnd) {
+      currentTime += note.duration;
+      continue;
+    }
+
     const pitch = noteDataToPitch(note);
 
     const existing = allEvents.get(timeKey);
@@ -843,5 +956,157 @@ describe('Full Pipeline Integration', () => {
     // Actually beat 2 for LH is C3, since F2 is half note (beats 0-1), C3 is half note (beats 2-3)
     expect(events[2].pitches).toContain('A4');
     expect(events[2].pitches).toContain('C3');
+  });
+});
+
+describe('Tie Parsing and Timing', () => {
+  describe('Parser detects ties', () => {
+    it('detects tie start and stop across bar line', () => {
+      const parsed = parseMusicXML(TIE_ACROSS_BARLINE);
+
+      // Measure 1: C half note, E half note with tie start
+      const m1 = parsed.measures[0].rightHand;
+      expect(m1.length).toBe(2);
+      expect(m1[0].step).toBe('C');
+      expect(m1[0].tieStart).toBeFalsy();
+      expect(m1[0].tieEnd).toBeFalsy();
+      expect(m1[1].step).toBe('E');
+      expect(m1[1].tieStart).toBe(true);
+      expect(m1[1].tieEnd).toBeFalsy();
+
+      // Measure 2: E half note with tie stop, G half note
+      const m2 = parsed.measures[1].rightHand;
+      expect(m2.length).toBe(2);
+      expect(m2[0].step).toBe('E');
+      expect(m2[0].tieStart).toBeFalsy();
+      expect(m2[0].tieEnd).toBe(true);
+      expect(m2[1].step).toBe('G');
+      expect(m2[1].tieStart).toBeFalsy();
+      expect(m2[1].tieEnd).toBeFalsy();
+    });
+
+    it('detects tie within measure', () => {
+      const parsed = parseMusicXML(TIE_WITHIN_MEASURE);
+      const rh = parsed.measures[0].rightHand;
+
+      // C, D (tie start), D (tie stop), E
+      expect(rh.length).toBe(4);
+      expect(rh[0].step).toBe('C');
+      expect(rh[0].tieStart).toBeFalsy();
+
+      expect(rh[1].step).toBe('D');
+      expect(rh[1].tieStart).toBe(true);
+
+      expect(rh[2].step).toBe('D');
+      expect(rh[2].tieEnd).toBe(true);
+
+      expect(rh[3].step).toBe('E');
+      expect(rh[3].tieStart).toBeFalsy();
+    });
+  });
+
+  describe('Timing events skip tied notes', () => {
+    it('creates fewer timing events when ties are present (within measure)', () => {
+      const parsed = parseMusicXML(TIE_WITHIN_MEASURE);
+      const { rightHand, leftHand } = getMeasureRange(parsed, 1, 1);
+
+      const events = buildTimingEvents(rightHand, leftHand);
+
+      // Without ties: 4 notes = 4 events (C, D, D, E)
+      // With ties: 3 events (C at beat 0, D at beat 1, E at beat 3)
+      // The tied D at beat 2 is skipped
+      expect(events.length).toBe(3);
+
+      expect(events[0].time).toBe(0);
+      expect(events[0].pitches).toContain('C4');
+
+      expect(events[1].time).toBe(1);
+      expect(events[1].pitches).toContain('D4');
+
+      expect(events[2].time).toBe(3);
+      expect(events[2].pitches).toContain('E4');
+    });
+
+    it('creates correct timing events across bar line tie', () => {
+      const parsed = parseMusicXML(TIE_ACROSS_BARLINE);
+      const { rightHand, leftHand } = getMeasureRange(parsed, 1, 2);
+
+      const events = buildTimingEvents(rightHand, leftHand);
+
+      // Measure 1: C (beats 0-1), E with tie start (beats 2-3)
+      // Measure 2: E with tie stop (beats 4-5) - SKIPPED as RH note, G (beats 6-7)
+      // LH has rests which create events at beats 0, 4
+      // Combined: events at 0, 2, 4 (LH rest, no RH pitch), 6
+      expect(events.length).toBe(4);
+
+      expect(events[0].time).toBe(0);
+      expect(events[0].pitches).toContain('C4');
+
+      expect(events[1].time).toBe(2);
+      expect(events[1].pitches).toContain('E4');
+
+      // Beat 4: LH rest creates an event, but tied E is skipped
+      // So no E4 pitch at beat 4
+      expect(events[2].time).toBe(4);
+      expect(events[2].pitches).not.toContain('E4');
+
+      expect(events[3].time).toBe(6);
+      expect(events[3].pitches).toContain('G4');
+    });
+
+    it('tied note is not expected as a new attack', () => {
+      const parsed = parseMusicXML(TIE_WITHIN_MEASURE);
+      const { rightHand, leftHand } = getMeasureRange(parsed, 1, 1);
+
+      const events = buildTimingEvents(rightHand, leftHand);
+
+      // No event should be at beat 2 (where the tied D would be)
+      const beatTwoEvent = events.find(e => Math.abs(e.time - 2) < 0.01);
+      expect(beatTwoEvent).toBeUndefined();
+    });
+  });
+
+  describe('Builder outputs tie elements', () => {
+    it('generates tie elements in XML output', () => {
+      // Create notes with ties manually
+      const rightHand: NoteData[] = [
+        { step: 'C', alter: 0, octave: 4, duration: 2, isRest: false },
+        { step: 'E', alter: 0, octave: 4, duration: 2, isRest: false, tieStart: true },
+      ];
+      const leftHand: NoteData[] = [
+        { step: 'C', alter: 0, octave: 3, duration: 4, isRest: false },
+      ];
+
+      const result = buildMusicXML(rightHand, leftHand, {
+        timeSignature: { beats: 4, beatType: 4 },
+        key: { name: 'C major', fifths: 0, scale: ['C', 'D', 'E', 'F', 'G', 'A', 'B'] },
+      });
+
+      // Should contain tie elements
+      expect(result.xml).toContain('<tie type="start"/>');
+      expect(result.xml).toContain('<tied type="start"/>');
+    });
+
+    it('generates both start and stop ties for continued notes', () => {
+      // Note that has both tieEnd and tieStart (middle of a chain)
+      const rightHand: NoteData[] = [
+        { step: 'C', alter: 0, octave: 4, duration: 2, isRest: false, tieStart: true },
+        { step: 'C', alter: 0, octave: 4, duration: 2, isRest: false, tieEnd: true, tieStart: true },
+      ];
+      const leftHand: NoteData[] = [
+        { step: 'C', alter: 0, octave: 3, duration: 4, isRest: false },
+      ];
+
+      const result = buildMusicXML(rightHand, leftHand, {
+        timeSignature: { beats: 4, beatType: 4 },
+        key: { name: 'C major', fifths: 0, scale: ['C', 'D', 'E', 'F', 'G', 'A', 'B'] },
+      });
+
+      // Should contain both stop and start ties
+      expect(result.xml).toContain('<tie type="stop"/>');
+      expect(result.xml).toContain('<tie type="start"/>');
+      expect(result.xml).toContain('<tied type="stop"/>');
+      expect(result.xml).toContain('<tied type="start"/>');
+    });
   });
 });

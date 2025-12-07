@@ -6,7 +6,17 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { generateSteps, getStepTypeLabel, getStepDescription } from '../upload/steps';
+import {
+  generateSteps,
+  generateStepsWithTies,
+  findTieGroups,
+  expandRangeForTies,
+  getStepTypeLabel,
+  getStepDescription,
+  type TieGroup,
+  type MeasureNotes,
+} from '../upload/steps';
+import type { NoteData } from '../core/types';
 
 describe('generateSteps', () => {
   it('generates correct steps for a 4-measure piece', () => {
@@ -137,5 +147,166 @@ describe('getStepDescription', () => {
   it('handles larger ranges', () => {
     const step = { measures: [5, 6, 7, 8, 9, 10, 11, 12], type: 'consolidate' as const, mastered: false };
     expect(getStepDescription(step)).toBe('Measures 5-12');
+  });
+});
+
+// ============================================
+// TIE-AWARE STEP GENERATION TESTS
+// ============================================
+
+describe('findTieGroups', () => {
+  // Helper to create a simple note
+  const makeNote = (step: string, tieStart?: boolean, tieEnd?: boolean): NoteData => ({
+    step,
+    alter: 0,
+    octave: 4,
+    duration: 1,
+    isRest: false,
+    tieStart,
+    tieEnd,
+  });
+
+  it('returns empty array for measures with no ties', () => {
+    const measures: MeasureNotes[] = [
+      { rightHand: [makeNote('C')], leftHand: [] },
+      { rightHand: [makeNote('D')], leftHand: [] },
+      { rightHand: [makeNote('E')], leftHand: [] },
+    ];
+
+    const groups = findTieGroups(measures);
+    expect(groups).toHaveLength(0);
+  });
+
+  it('detects a tie between two measures', () => {
+    const measures: MeasureNotes[] = [
+      { rightHand: [makeNote('C'), makeNote('D', true)], leftHand: [] }, // ends with tie
+      { rightHand: [makeNote('D', false, true), makeNote('E')], leftHand: [] }, // starts with tie
+      { rightHand: [makeNote('F')], leftHand: [] },
+    ];
+
+    const groups = findTieGroups(measures);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toEqual({ start: 1, end: 2 });
+  });
+
+  it('detects tie chain across three measures', () => {
+    const measures: MeasureNotes[] = [
+      { rightHand: [makeNote('C', true)], leftHand: [] }, // ties forward
+      { rightHand: [makeNote('C', true, true)], leftHand: [] }, // tied from prev, ties forward
+      { rightHand: [makeNote('C', false, true)], leftHand: [] }, // tied from prev
+      { rightHand: [makeNote('D')], leftHand: [] },
+    ];
+
+    const groups = findTieGroups(measures);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toEqual({ start: 1, end: 3 });
+  });
+
+  it('detects multiple separate tie groups', () => {
+    const measures: MeasureNotes[] = [
+      { rightHand: [makeNote('C', true)], leftHand: [] }, // ties to m2
+      { rightHand: [makeNote('C', false, true)], leftHand: [] }, // from m1
+      { rightHand: [makeNote('D')], leftHand: [] }, // no ties
+      { rightHand: [makeNote('E', true)], leftHand: [] }, // ties to m5
+      { rightHand: [makeNote('E', false, true)], leftHand: [] }, // from m4
+    ];
+
+    const groups = findTieGroups(measures);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toEqual({ start: 1, end: 2 });
+    expect(groups[1]).toEqual({ start: 4, end: 5 });
+  });
+
+  it('detects ties in left hand', () => {
+    const measures: MeasureNotes[] = [
+      { rightHand: [makeNote('C')], leftHand: [makeNote('G', true)] },
+      { rightHand: [makeNote('D')], leftHand: [makeNote('G', false, true)] },
+    ];
+
+    const groups = findTieGroups(measures);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toEqual({ start: 1, end: 2 });
+  });
+});
+
+describe('expandRangeForTies', () => {
+  it('returns original range when no tie groups exist', () => {
+    const result = expandRangeForTies(2, 3, []);
+    expect(result).toEqual({ start: 2, end: 3 });
+  });
+
+  it('returns original range when no overlap with tie groups', () => {
+    const tieGroups: TieGroup[] = [{ start: 5, end: 6 }];
+    const result = expandRangeForTies(1, 2, tieGroups);
+    expect(result).toEqual({ start: 1, end: 2 });
+  });
+
+  it('expands range to include overlapping tie group', () => {
+    const tieGroups: TieGroup[] = [{ start: 2, end: 4 }];
+    const result = expandRangeForTies(3, 3, tieGroups);
+    expect(result).toEqual({ start: 2, end: 4 });
+  });
+
+  it('expands range when starting inside tie group', () => {
+    const tieGroups: TieGroup[] = [{ start: 1, end: 3 }];
+    const result = expandRangeForTies(2, 5, tieGroups);
+    expect(result).toEqual({ start: 1, end: 5 });
+  });
+
+  it('expands range when ending inside tie group', () => {
+    const tieGroups: TieGroup[] = [{ start: 3, end: 5 }];
+    const result = expandRangeForTies(1, 4, tieGroups);
+    expect(result).toEqual({ start: 1, end: 5 });
+  });
+
+  it('expands for multiple overlapping tie groups', () => {
+    const tieGroups: TieGroup[] = [
+      { start: 1, end: 2 },
+      { start: 4, end: 5 },
+    ];
+    const result = expandRangeForTies(2, 4, tieGroups);
+    expect(result).toEqual({ start: 1, end: 5 });
+  });
+});
+
+describe('generateStepsWithTies', () => {
+  it('behaves like generateSteps when no tie groups', () => {
+    const stepsWithTies = generateStepsWithTies(4, []);
+    const stepsWithout = generateSteps(4);
+
+    // Should have same structure (measures and types)
+    expect(stepsWithTies.map(s => s.measures)).toEqual(stepsWithout.map(s => s.measures));
+  });
+
+  it('expands single measure steps to include tie group', () => {
+    // Tie group from measure 2-3
+    const tieGroups: TieGroup[] = [{ start: 2, end: 3 }];
+    const steps = generateStepsWithTies(4, tieGroups);
+
+    // Measure 1 should still be single
+    const m1 = steps.find(s => s.measures.length === 1 && s.measures[0] === 1);
+    expect(m1).toBeDefined();
+
+    // Measure 2 and 3 "single" steps should be expanded to [2,3]
+    const m2Single = steps.filter(s => s.measures.includes(2) && !s.measures.includes(1));
+    // All steps containing 2 should also contain 3
+    expect(m2Single.every(s => s.measures.includes(3))).toBe(true);
+
+    // No step should have just [2] or just [3]
+    expect(steps.some(s => s.measures.length === 1 && s.measures[0] === 2)).toBe(false);
+    expect(steps.some(s => s.measures.length === 1 && s.measures[0] === 3)).toBe(false);
+  });
+
+  it('deduplicates expanded steps', () => {
+    // If measure 1-2 are tied, both [1] and [2] expand to [1,2]
+    // Should only appear once
+    const tieGroups: TieGroup[] = [{ start: 1, end: 2 }];
+    const steps = generateStepsWithTies(4, tieGroups);
+
+    // Count how many times [1,2] appears
+    const oneTwo = steps.filter(
+      s => s.measures.length === 2 && s.measures[0] === 1 && s.measures[1] === 2
+    );
+    expect(oneTwo.length).toBe(1);
   });
 });
