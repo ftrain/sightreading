@@ -120,7 +120,7 @@
               <path d="M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </label>
-          <input type="file" id="xmlUpload" accept=".xml,.musicxml,.mxl" hidden />
+          <input type="file" id="xmlUpload" accept=".xml,.musicxml,.mxl,.mid,.midi" hidden />
         </div>
 
         <div class="control-section options">
@@ -139,6 +139,10 @@
 
         <div class="options-group">
           <h3>Playback</h3>
+          <label class="option-row">
+            <span>Master Volume</span>
+            <input type="range" id="masterVolume" min="0" max="100" value="80" />
+          </label>
           <label class="option-row">
             <span>Metronome</span>
             <input type="checkbox" id="metronome" checked />
@@ -219,10 +223,10 @@
           </div>
           <div class="option-row">
             <label class="file-upload-label" for="xmlUploadOptions">
-              <span>Or upload MusicXML</span>
-              <span class="upload-hint">.xml, .musicxml, .mxl</span>
+              <span>Or upload file</span>
+              <span class="upload-hint">.xml, .musicxml, .mxl, .mid</span>
             </label>
-            <input type="file" id="xmlUploadOptions" accept=".xml,.musicxml,.mxl" />
+            <input type="file" id="xmlUploadOptions" accept=".xml,.musicxml,.mxl,.mid,.midi" />
           </div>
           <button id="exitPracticeMode" class="exit-practice-btn" hidden>
             Return to Levels

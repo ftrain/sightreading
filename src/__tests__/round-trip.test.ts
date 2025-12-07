@@ -273,13 +273,13 @@ describe('Round-trip: Minuet in G', () => {
       const { rightHand, leftHand } = getMeasureRange(parsed, 1, 8);
 
       // Rebuild MusicXML
-      const rebuilt = buildMusicXML(rightHand, leftHand, {
+      const result = buildMusicXML(rightHand, leftHand, {
         timeSignature: parsed.timeSignature,
         key: parsed.keySignature,
       });
 
       // Re-parse
-      const reparsed = parseMusicXML(rebuilt);
+      const reparsed = parseMusicXML(result.xml);
       const { rightHand: rh2, leftHand: lh2 } = getMeasureRange(reparsed, 1, reparsed.measures.length);
 
       expect(rh2.length).toBe(rightHand.length);
@@ -290,12 +290,12 @@ describe('Round-trip: Minuet in G', () => {
       const parsed = parseMusicXML(minuetInG!.xml);
       const { rightHand, leftHand } = getMeasureRange(parsed, 1, 8);
 
-      const rebuilt = buildMusicXML(rightHand, leftHand, {
+      const result = buildMusicXML(rightHand, leftHand, {
         timeSignature: parsed.timeSignature,
         key: parsed.keySignature,
       });
 
-      const reparsed = parseMusicXML(rebuilt);
+      const reparsed = parseMusicXML(result.xml);
       const { rightHand: rh2, leftHand: lh2 } = getMeasureRange(reparsed, 1, reparsed.measures.length);
 
       // Check all RH pitches match
@@ -313,12 +313,12 @@ describe('Round-trip: Minuet in G', () => {
       const parsed = parseMusicXML(minuetInG!.xml);
       const { rightHand, leftHand } = getMeasureRange(parsed, 1, 8);
 
-      const rebuilt = buildMusicXML(rightHand, leftHand, {
+      const result = buildMusicXML(rightHand, leftHand, {
         timeSignature: parsed.timeSignature,
         key: parsed.keySignature,
       });
 
-      const reparsed = parseMusicXML(rebuilt);
+      const reparsed = parseMusicXML(result.xml);
       const { rightHand: rh2, leftHand: lh2 } = getMeasureRange(reparsed, 1, reparsed.measures.length);
 
       // Check all RH durations match
@@ -340,12 +340,12 @@ describe('Round-trip: Minuet in G', () => {
       const originalTiming = buildTimingEvents(rightHand, leftHand);
 
       // Rebuild and reparse
-      const rebuilt = buildMusicXML(rightHand, leftHand, {
+      const result = buildMusicXML(rightHand, leftHand, {
         timeSignature: parsed.timeSignature,
         key: parsed.keySignature,
       });
 
-      const reparsed = parseMusicXML(rebuilt);
+      const reparsed = parseMusicXML(result.xml);
       const { rightHand: rh2, leftHand: lh2 } = getMeasureRange(reparsed, 1, reparsed.measures.length);
 
       // Build timing from rebuilt
@@ -432,13 +432,13 @@ describe('Round-trip: All built-in songs', () => {
         const { rightHand, leftHand } = getMeasureRange(parsed, 1, parsed.measures.length);
 
         // Rebuild
-        const rebuilt = buildMusicXML(rightHand, leftHand, {
+        const result = buildMusicXML(rightHand, leftHand, {
           timeSignature: parsed.timeSignature,
           key: parsed.keySignature,
         });
 
         // Reparse
-        const reparsed = parseMusicXML(rebuilt);
+        const reparsed = parseMusicXML(result.xml);
         const { rightHand: rh2, leftHand: lh2 } = getMeasureRange(reparsed, 1, reparsed.measures.length);
 
         // Same counts
@@ -462,12 +462,12 @@ describe('Round-trip: All built-in songs', () => {
 
         const originalTiming = buildTimingEvents(rightHand, leftHand);
 
-        const rebuilt = buildMusicXML(rightHand, leftHand, {
+        const result = buildMusicXML(rightHand, leftHand, {
           timeSignature: parsed.timeSignature,
           key: parsed.keySignature,
         });
 
-        const reparsed = parseMusicXML(rebuilt);
+        const reparsed = parseMusicXML(result.xml);
         const { rightHand: rh2, leftHand: lh2 } = getMeasureRange(reparsed, 1, reparsed.measures.length);
 
         const rebuiltTiming = buildTimingEvents(rh2, lh2);

@@ -29,3 +29,8 @@ export {
   type PracticeSegment,
   type PracticeProgress,
 } from './practice-session';
+
+export {
+  parseMidi,
+  isMidiFile,
+} from './midi-parser';

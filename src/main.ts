@@ -29,6 +29,8 @@ import {
 } from './scheduler';
 import {
   parseMusicXML,
+  parseMidi,
+  isMidiFile,
   ProgressivePracticeSession,
   getStepTypeLabel,
   getStepDescription,
@@ -72,6 +74,7 @@ let selectedMidiInput: string | null = localStorage.getItem('midiDeviceId');
 let bpm = 30;
 let metronomeEnabled = true;
 let metronomeVolume = -20; // dB base for metronome (quieter default)
+let masterVolume = -4; // dB for master output (default 80% = -4dB)
 
 // Store the current piece's XML
 let currentPieceXml: string = '';
@@ -272,6 +275,9 @@ async function initAudio() {
   }).toDestination();
 
   await Tone.loaded();
+
+  // Set initial master volume
+  Tone.getDestination().volume.value = masterVolume;
 }
 
 function playMetronomeClick(subdivisionInBeat: number) {
@@ -508,18 +514,18 @@ function buildTimingEvents() {
   let currentTime = 0;
   for (const note of currentRightHandNotes) {
     const timeKey = String(roundTime(currentTime));
-    const pitch = noteDataToPitch(note);
+    const pitches = getAllPitchesFromNote(note);
 
     const existing = allEvents.get(timeKey);
     if (existing) {
-      // Add pitch to existing event (may be chord or simultaneous with LH)
-      if (pitch) existing.pitches.push(pitch);
+      // Add pitches to existing event (may be chord or simultaneous with LH)
+      existing.pitches.push(...pitches);
       // Use shortest duration at this time
       if (note.duration < existing.duration) existing.duration = note.duration;
     } else {
       allEvents.set(timeKey, {
         duration: note.duration,
-        pitches: pitch ? [pitch] : [],
+        pitches: [...pitches],
       });
     }
     currentTime += note.duration;
@@ -529,16 +535,16 @@ function buildTimingEvents() {
   currentTime = 0;
   for (const note of currentLeftHandNotes) {
     const timeKey = String(roundTime(currentTime));
-    const pitch = noteDataToPitch(note);
+    const pitches = getAllPitchesFromNote(note);
 
     const existing = allEvents.get(timeKey);
     if (existing) {
-      if (pitch) existing.pitches.push(pitch);
+      existing.pitches.push(...pitches);
       if (note.duration < existing.duration) existing.duration = note.duration;
     } else {
       allEvents.set(timeKey, {
         duration: note.duration,
-        pitches: pitch ? [pitch] : [],
+        pitches: [...pitches],
       });
     }
     currentTime += note.duration;
@@ -878,6 +884,26 @@ function setupControls() {
       // Slider is 0-100, map to -40dB to 0dB
       const sliderValue = parseInt(metronomeVolumeSlider.value);
       metronomeVolume = (sliderValue / 100) * 40 - 40; // 0 -> -40dB, 100 -> 0dB
+    });
+  }
+
+  // Master volume slider - controls Tone.js destination volume
+  const masterVolumeSlider = document.getElementById(
+    'masterVolume'
+  ) as HTMLInputElement;
+  if (masterVolumeSlider) {
+    // Set initial value to match default
+    masterVolumeSlider.value = '80';
+    masterVolumeSlider.addEventListener('input', () => {
+      // Slider is 0-100, map to -60dB to 0dB (0 = mute, 100 = full)
+      const sliderValue = parseInt(masterVolumeSlider.value);
+      if (sliderValue === 0) {
+        masterVolume = -Infinity;
+      } else {
+        masterVolume = (sliderValue / 100) * 40 - 40; // 0 -> -40dB, 100 -> 0dB
+      }
+      // Apply to Tone.js destination
+      Tone.getDestination().volume.value = masterVolume;
     });
   }
 
@@ -1386,6 +1412,32 @@ function noteDataToPitch(note: NoteData): string | null {
   return `${pitchName}${note.octave}`;
 }
 
+/**
+ * Get all pitches from a NoteData, including chord notes.
+ * Returns an array of Tone.js pitch strings.
+ */
+function getAllPitchesFromNote(note: NoteData): string[] {
+  if (note.isRest) return [];
+
+  const pitches: string[] = [];
+
+  // Main note pitch
+  const mainPitch = noteDataToPitch(note);
+  if (mainPitch) pitches.push(mainPitch);
+
+  // Chord notes
+  if (note.chordNotes) {
+    for (const chordNote of note.chordNotes) {
+      let pitchName = chordNote.step;
+      if (chordNote.alter === 1) pitchName += '#';
+      else if (chordNote.alter === -1) pitchName += 'b';
+      pitches.push(`${pitchName}${chordNote.octave}`);
+    }
+  }
+
+  return pitches;
+}
+
 // ============================================
 // PRACTICE MODE (UPLOADED FILES)
 // ============================================
@@ -1429,20 +1481,26 @@ async function extractMxlContent(file: File): Promise<string> {
 
 /**
  * Handle file upload and enter practice mode.
- * Supports both plain XML (.xml, .musicxml) and compressed MXL (.mxl) files.
+ * Supports MusicXML (.xml, .musicxml), compressed MXL (.mxl), and MIDI (.mid, .midi) files.
  */
 async function handleFileUpload(file: File) {
   try {
-    let xmlString: string;
+    let parsed;
 
-    // Check if this is an MXL (compressed) file
-    if (file.name.toLowerCase().endsWith('.mxl')) {
-      xmlString = await extractMxlContent(file);
+    // Check file type and parse accordingly
+    if (isMidiFile(file.name)) {
+      // Parse MIDI file
+      const arrayBuffer = await file.arrayBuffer();
+      parsed = parseMidi(arrayBuffer);
+    } else if (file.name.toLowerCase().endsWith('.mxl')) {
+      // Parse compressed MusicXML
+      const xmlString = await extractMxlContent(file);
+      parsed = parseMusicXML(xmlString);
     } else {
-      xmlString = await file.text();
+      // Parse plain MusicXML
+      const xmlString = await file.text();
+      parsed = parseMusicXML(xmlString);
     }
-
-    const parsed = parseMusicXML(xmlString);
 
     if (parsed.measures.length === 0) {
       alert('No measures found in the uploaded file.');
@@ -1454,8 +1512,14 @@ async function handleFileUpload(file: File) {
     currentMode = 'practice';
     currentPracticeSongId = null; // Not a built-in song
 
-    // Save the uploaded music for persistence
-    savePracticeMusic(xmlString);
+    // For MIDI files, we can't save as MusicXML for persistence
+    // (we'd need to regenerate it which loses info)
+    if (!isMidiFile(file.name)) {
+      const xmlString = file.name.toLowerCase().endsWith('.mxl')
+        ? await extractMxlContent(file)
+        : await file.text();
+      savePracticeMusic(xmlString);
+    }
 
     // Update BPM to something reasonable for practice
     bpm = 60;
@@ -1471,8 +1535,9 @@ async function handleFileUpload(file: File) {
     // Save practice state
     savePracticeState();
   } catch (error) {
-    console.error('Error parsing MusicXML:', error);
-    alert('Error parsing file. Please ensure it is a valid MusicXML or MXL file.');
+    console.error('Error parsing file:', error);
+    const fileTypes = isMidiFile(file.name) ? 'MIDI' : 'MusicXML or MXL';
+    alert(`Error parsing file. Please ensure it is a valid ${fileTypes} file.`);
   }
 }
 

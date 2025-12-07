@@ -155,7 +155,8 @@ export class RenderingEngine {
       leftHandFingering: options.leftHandFingering,
     };
 
-    this.currentXml = buildMusicXML(rightHandNotes, leftHandNotes, xmlOptions);
+    const result = buildMusicXML(rightHandNotes, leftHandNotes, xmlOptions);
+    this.currentXml = result.xml;
 
     // Render to SVG
     this.renderCurrentXml();

@@ -159,6 +159,13 @@ export class ProgressivePracticeSession {
     return this.currentStepIndex === 0;
   }
 
+  /**
+   * Get all steps for building UI selectors.
+   */
+  getAllSteps(): PracticeStep[] {
+    return this.steps;
+  }
+
   // ============================================
   // ACTIONS
   // ============================================

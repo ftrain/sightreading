@@ -638,30 +638,30 @@ describe('MusicXML Builder roundtrip', () => {
     const parsed = parseMusicXML(SIMPLE_QUARTER_NOTES);
     const { rightHand, leftHand } = getMeasureRange(parsed, 1, 1);
 
-    const rebuilt = buildMusicXML(rightHand, leftHand, {
+    const result = buildMusicXML(rightHand, leftHand, {
       timeSignature: parsed.timeSignature,
       key: parsed.keySignature,
     });
 
-    expect(rebuilt).toContain('<?xml version="1.0"');
-    expect(rebuilt).toContain('<score-partwise');
-    expect(rebuilt).toContain('<measure number="1">');
+    expect(result.xml).toContain('<?xml version="1.0"');
+    expect(result.xml).toContain('<score-partwise');
+    expect(result.xml).toContain('<measure number="1">');
   });
 
   it('preserves note structure through roundtrip', () => {
     const original = parseMusicXML(MIXED_DURATIONS);
     const { rightHand, leftHand } = getMeasureRange(original, 1, 2);
 
-    const rebuilt = buildMusicXML(rightHand, leftHand, {
+    const result = buildMusicXML(rightHand, leftHand, {
       timeSignature: original.timeSignature,
       key: original.keySignature,
     });
 
     // Check that key features are preserved
-    expect(rebuilt).toContain('<type>half</type>');
-    expect(rebuilt).toContain('<type>quarter</type>');
-    expect(rebuilt).toContain('<type>whole</type>');
-    expect(rebuilt).toContain('<fifths>1</fifths>');
+    expect(result.xml).toContain('<type>half</type>');
+    expect(result.xml).toContain('<type>quarter</type>');
+    expect(result.xml).toContain('<type>whole</type>');
+    expect(result.xml).toContain('<fifths>1</fifths>');
   });
 });
 
@@ -812,13 +812,13 @@ describe('Full Pipeline Integration', () => {
     expect(events[0].pitches).toContain('E4');
 
     // 7. Rebuild MusicXML
-    const rebuilt = buildMusicXML(rightHand, leftHand, {
+    const result = buildMusicXML(rightHand, leftHand, {
       timeSignature: parsed.timeSignature,
       key: parsed.keySignature,
     });
 
     // 8. Verify only 1 measure in rebuilt XML
-    const measureCount = (rebuilt.match(/<measure number="/g) || []).length;
+    const measureCount = (result.xml.match(/<measure number="/g) || []).length;
     expect(measureCount).toBe(1);
   });
 

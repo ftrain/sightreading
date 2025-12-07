@@ -142,6 +142,8 @@ body {
   justify-content: center;
   position: relative;
   padding-top: var(--space-md);
+  /* Fixed minimum height to prevent layout shifts during practice mode */
+  min-height: 280px;
 }
 
 #notation {
@@ -149,6 +151,8 @@ body {
   max-width: 1100px;
   display: flex;
   justify-content: center;
+  /* Fixed minimum height to prevent layout shifts */
+  min-height: 250px;
 }
 
 #notation svg {
@@ -571,19 +575,112 @@ body {
   color: var(--text-muted);
 }
 
-.progress-bar {
-  width: 120px;
-  height: 4px;
+.progress-bar-container {
+  width: 180px;
+  height: 24px;
+  position: relative;
+  cursor: pointer;
+  padding: 8px 0;
+}
+
+.progress-bar-track {
+  width: 100%;
+  height: 8px;
   background: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
+  border-radius: 4px;
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
   background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.1s ease;
+  pointer-events: none;
+}
+
+.progress-thumb {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  background: var(--accent-light);
+  border: 2px solid white;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.progress-thumb:hover {
+  transform: translate(-50%, -50%) scale(1.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.progress-thumb:active,
+.progress-bar-container.dragging .progress-thumb {
+  cursor: grabbing;
+  transform: translate(-50%, -50%) scale(1.2);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+
+.progress-bar-container:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+/* Preview tooltip shown while dragging */
+.progress-preview {
+  position: fixed;
+  background: var(--surface);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: var(--space-sm) var(--space-md);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  z-index: 300;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  min-width: 200px;
+  max-width: 320px;
+}
+
+.progress-preview.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.progress-preview-step {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent-light);
+  margin-bottom: 2px;
+}
+
+.progress-preview-desc {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  color: var(--text);
+  margin-bottom: var(--space-xs);
+}
+
+.progress-preview-num {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Legacy progress bar for level mode */
+.progress-bar {
+  width: 120px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 2px;
-  transition: width var(--transition-med);
+  overflow: hidden;
 }
 
 /* Exit Practice Mode Button */
@@ -1089,6 +1186,101 @@ body.is-playing #controlBar:hover {
   #notation svg {
     box-shadow: none;
     border: 1px solid #ddd;
+  }
+}
+
+/* ============================================
+   CELEBRATION OVERLAY
+   ============================================ */
+.celebration-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 200;
+  animation: fadeIn 0.3s ease;
+}
+
+.celebration-overlay[hidden] {
+  display: none;
+}
+
+.celebration-content {
+  text-align: center;
+  position: relative;
+}
+
+.celebration-text {
+  font-family: var(--font-serif);
+  font-size: 4rem;
+  font-weight: 600;
+  color: var(--current);
+  text-shadow: 0 0 40px rgba(201, 162, 39, 0.6);
+  animation: celebratePulse 0.6s ease infinite alternate;
+}
+
+.celebration-sparkles {
+  position: absolute;
+  inset: -100px;
+  pointer-events: none;
+}
+
+.celebration-sparkles::before,
+.celebration-sparkles::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--current);
+  box-shadow:
+    0 0 10px var(--current),
+    0 0 20px var(--current);
+  animation: sparkle 1.5s ease-in-out infinite;
+}
+
+.celebration-sparkles::before {
+  top: 20%;
+  left: 20%;
+  animation-delay: 0s;
+}
+
+.celebration-sparkles::after {
+  top: 30%;
+  right: 20%;
+  animation-delay: 0.3s;
+}
+
+/* Particle container for more sparkles */
+.celebration-sparkles .particle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-light);
+  animation: sparkle 1.2s ease-in-out infinite;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes celebratePulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.05); }
+}
+
+@keyframes sparkle {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(0) translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1) translateY(-20px);
   }
 }
 

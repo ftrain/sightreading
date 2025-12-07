@@ -11,6 +11,7 @@
 // - TEMPO is separate from note complexity - master slow before fast
 
 import { generateFingering, type Finger } from './fingeringEngine';
+import { buildMusicXML, type NoteIdMapping } from './music/xml/builder';
 
 // Global setting for whether to include fingering in notation
 let includeFingering = false;
@@ -45,6 +46,7 @@ export interface GeneratedMusic {
   keyName: string;
   rightHandNotes: NoteData[];
   leftHandNotes: NoteData[];
+  noteIdMapping: NoteIdMapping;
 }
 
 // Level structure: Level 1a, 1b, 1c, 1d... 2a, 2b, 2c, 2d... etc.
@@ -1170,118 +1172,35 @@ function generateLeftHand(
 // ============================================
 
 // Regenerate XML from existing notes (for fingering toggle without changing music)
+export interface RegeneratedMusic {
+  xml: string;
+  noteIdMapping: NoteIdMapping;
+}
+
 export function regenerateXMLFromNotes(
   rightHandNotes: NoteData[],
   leftHandNotes: NoteData[],
   timeSignature: { beats: number; beatType: number }
-): string {
+): RegeneratedMusic {
   const config = getLevelConfig(progress.level, progress.subLevel);
-  const divisions = 4;
-  const beatsPerMeasure = timeSignature.beatType === 8
-    ? timeSignature.beats / 2
-    : timeSignature.beats;
-
-  // Split notes back into measures based on duration
-  const splitIntoMeasures = (notes: NoteData[]): NoteData[][] => {
-    const measures: NoteData[][] = [];
-    let currentMeasure: NoteData[] = [];
-    let currentBeats = 0;
-
-    for (const note of notes) {
-      currentMeasure.push(note);
-      currentBeats += note.duration;
-      if (currentBeats >= beatsPerMeasure - 0.01) {
-        measures.push(currentMeasure);
-        currentMeasure = [];
-        currentBeats = 0;
-      }
-    }
-    if (currentMeasure.length > 0) {
-      measures.push(currentMeasure);
-    }
-    return measures;
-  };
-
-  const rightHand = splitIntoMeasures(rightHandNotes);
-  const leftHand = splitIntoMeasures(leftHandNotes);
-  const numMeasures = Math.max(rightHand.length, leftHand.length);
-
-  let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN"
-  "http://www.musicxml.org/dtds/partwise.dtd">
-<score-partwise version="4.0">
-  <part-list>
-    <score-part id="P1">
-      <part-name print-object="no"></part-name>
-    </score-part>
-  </part-list>
-  <part id="P1">
-`;
 
   // Calculate fingering for both hands
   const rhFingering = includeFingering ? generateFingering(rightHandNotes, 'right') : null;
   const lhFingering = includeFingering ? generateFingering(leftHandNotes, 'left') : null;
 
-  let rhFingerIdx = 0;
-  let lhFingerIdx = 0;
+  // Use buildMusicXML from builder.ts for consistent ID generation
+  const result = buildMusicXML(rightHandNotes, leftHandNotes, {
+    key: config.key,
+    timeSignature: timeSignature,
+    rightHandFingering: rhFingering?.notes.map(n => n.finger),
+    leftHandFingering: lhFingering?.notes.map(n => n.finger),
+    generateIds: true,
+  });
 
-  for (let m = 0; m < numMeasures; m++) {
-    xml += `    <measure number="${m + 1}">
-`;
-
-    if (m === 0) {
-      xml += `      <attributes>
-        <divisions>${divisions}</divisions>
-        <key><fifths>${config.key.fifths}</fifths></key>
-        <time><beats>${timeSignature.beats}</beats><beat-type>${timeSignature.beatType}</beat-type></time>
-        <staves>2</staves>
-        <clef number="1"><sign>G</sign><line>2</line></clef>
-        <clef number="2"><sign>F</sign><line>4</line></clef>
-      </attributes>
-`;
-    }
-
-    // Right hand (staff 1)
-    const rhMeasure = rightHand[m] || [];
-    const rhBeamState: BeamState = { inBeam: false, beamNumber: 0 };
-    for (let i = 0; i < rhMeasure.length; i++) {
-      const note = rhMeasure[i];
-      const nextNote = i < rhMeasure.length - 1 ? rhMeasure[i + 1] : null;
-      let finger: Finger | undefined;
-      if (rhFingering && !note.isRest) {
-        finger = rhFingering.notes[rhFingerIdx]?.finger;
-        rhFingerIdx++;
-      }
-      xml += noteToXML(note, 1, divisions, rhBeamState, nextNote, finger);
-    }
-
-    // Backup to write left hand
-    const rhDuration = rhMeasure.reduce((sum, n) => sum + n.duration, 0);
-    xml += `      <backup><duration>${Math.round(rhDuration * divisions)}</duration></backup>
-`;
-
-    // Left hand (staff 2)
-    const lhMeasure = leftHand[m] || [];
-    const lhBeamState: BeamState = { inBeam: false, beamNumber: 0 };
-    for (let i = 0; i < lhMeasure.length; i++) {
-      const note = lhMeasure[i];
-      const nextNote = i < lhMeasure.length - 1 ? lhMeasure[i + 1] : null;
-      let finger: Finger | undefined;
-      if (lhFingering && !note.isRest) {
-        finger = lhFingering.notes[lhFingerIdx]?.finger;
-        lhFingerIdx++;
-      }
-      xml += noteToXML(note, 2, divisions, lhBeamState, nextNote, finger);
-    }
-
-    xml += `    </measure>
-`;
-  }
-
-  xml += `  </part>
-</score-partwise>`;
-
-  return xml;
+  return {
+    xml: result.xml,
+    noteIdMapping: result.noteIdMapping,
+  };
 }
 
 export function generateMusicXML(): GeneratedMusic {
@@ -1318,92 +1237,25 @@ export function generateMusicXML(): GeneratedMusic {
     leftHand = generateLeftHand(config, beatsPerMeasure, numMeasures);
   }
 
-  const divisions = 4;
-
-  let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN"
-  "http://www.musicxml.org/dtds/partwise.dtd">
-<score-partwise version="4.0">
-  <part-list>
-    <score-part id="P1">
-      <part-name print-object="no"></part-name>
-    </score-part>
-  </part-list>
-  <part id="P1">
-`;
-
-  // Calculate fingering for both hands (flatten all notes first)
-  const allRhNotes = rightHand.flat();
-  const allLhNotes = leftHand.flat();
-  const rhFingering = includeFingering ? generateFingering(allRhNotes, 'right') : null;
-  const lhFingering = includeFingering ? generateFingering(allLhNotes, 'left') : null;
-
-  // Track fingering index across measures
-  let rhFingerIdx = 0;
-  let lhFingerIdx = 0;
-
-  for (let m = 0; m < numMeasures; m++) {
-    xml += `    <measure number="${m + 1}">
-`;
-
-    if (m === 0) {
-      xml += `      <attributes>
-        <divisions>${divisions}</divisions>
-        <key><fifths>${config.key.fifths}</fifths></key>
-        <time><beats>${config.timeSignature.beats}</beats><beat-type>${config.timeSignature.beatType}</beat-type></time>
-        <staves>2</staves>
-        <clef number="1"><sign>G</sign><line>2</line></clef>
-        <clef number="2"><sign>F</sign><line>4</line></clef>
-      </attributes>
-`;
-    }
-
-    // Right hand (staff 1)
-    const rhBeamState: BeamState = { inBeam: false, beamNumber: 0 };
-    for (let i = 0; i < rightHand[m].length; i++) {
-      const note = rightHand[m][i];
-      const nextNote = i < rightHand[m].length - 1 ? rightHand[m][i + 1] : null;
-      // Get fingering for this note (skip rests in fingering array)
-      let finger: Finger | undefined;
-      if (rhFingering && !note.isRest) {
-        finger = rhFingering.notes[rhFingerIdx]?.finger;
-        rhFingerIdx++;
-      }
-      xml += noteToXML(note, 1, divisions, rhBeamState, nextNote, finger);
-    }
-
-    // Backup to write left hand
-    const rhDuration = rightHand[m].reduce((sum, n) => sum + n.duration, 0);
-    xml += `      <backup><duration>${Math.round(rhDuration * divisions)}</duration></backup>
-`;
-
-    // Left hand (staff 2)
-    const lhBeamState: BeamState = { inBeam: false, beamNumber: 0 };
-    for (let i = 0; i < leftHand[m].length; i++) {
-      const note = leftHand[m][i];
-      const nextNote = i < leftHand[m].length - 1 ? leftHand[m][i + 1] : null;
-      // Get fingering for this note (skip rests in fingering array)
-      let finger: Finger | undefined;
-      if (lhFingering && !note.isRest) {
-        finger = lhFingering.notes[lhFingerIdx]?.finger;
-        lhFingerIdx++;
-      }
-      xml += noteToXML(note, 2, divisions, lhBeamState, nextNote, finger);
-    }
-
-    xml += `    </measure>
-`;
-  }
-
-  xml += `  </part>
-</score-partwise>`;
-
-  // Flatten notes for analysis
+  // Flatten notes for buildMusicXML
   const rightHandNotes = rightHand.flat();
   const leftHandNotes = leftHand.flat();
 
+  // Calculate fingering for both hands
+  const rhFingering = includeFingering ? generateFingering(rightHandNotes, 'right') : null;
+  const lhFingering = includeFingering ? generateFingering(leftHandNotes, 'left') : null;
+
+  // Use buildMusicXML from builder.ts for consistent ID generation
+  const result = buildMusicXML(rightHandNotes, leftHandNotes, {
+    key: config.key,
+    timeSignature: config.timeSignature,
+    rightHandFingering: rhFingering?.notes.map(n => n.finger),
+    leftHandFingering: lhFingering?.notes.map(n => n.finger),
+    generateIds: true,
+  });
+
   return {
-    xml,
+    xml: result.xml,
     timeSignature: config.timeSignature,
     level: progress.level,
     subLevel: progress.subLevel,
@@ -1413,6 +1265,7 @@ export function generateMusicXML(): GeneratedMusic {
     keyName: config.key.name,
     rightHandNotes,
     leftHandNotes,
+    noteIdMapping: result.noteIdMapping,
   };
 }
 
