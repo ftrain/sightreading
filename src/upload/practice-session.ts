@@ -12,10 +12,13 @@ import type { ParsedMusicXML } from './parser';
 import { getMeasures } from './parser';
 import {
   generateSteps,
+  generateStepsWithTies,
+  findTieGroups,
   getStepDescription,
   getStepTypeLabel,
   type PracticeStep,
   type StepType,
+  type TieGroup,
 } from './steps';
 
 // Re-export from steps module
@@ -49,11 +52,22 @@ export interface PracticeProgress {
 export class ProgressivePracticeSession {
   private parsed: ParsedMusicXML;
   private steps: PracticeStep[];
+  private tieGroups: TieGroup[];
   private currentStepIndex: number = 0;
 
   constructor(parsed: ParsedMusicXML) {
     this.parsed = parsed;
-    this.steps = generateSteps(parsed.measures.length);
+
+    // Detect tie groups from the parsed measures
+    this.tieGroups = findTieGroups(parsed.measures);
+
+    // Generate steps with tie awareness
+    // If there are tie groups, use tie-aware generation to avoid splitting ties
+    if (this.tieGroups.length > 0) {
+      this.steps = generateStepsWithTies(parsed.measures.length, this.tieGroups);
+    } else {
+      this.steps = generateSteps(parsed.measures.length);
+    }
   }
 
   // ============================================
@@ -93,6 +107,21 @@ export class ProgressivePracticeSession {
    */
   getMeasureCount(): number {
     return this.parsed.measures.length;
+  }
+
+  /**
+   * Get tie groups in this piece.
+   * Returns groups of measures that are linked by ties and must be shown together.
+   */
+  getTieGroups(): TieGroup[] {
+    return this.tieGroups;
+  }
+
+  /**
+   * Check if this piece has any ties that span measure boundaries.
+   */
+  hasTies(): boolean {
+    return this.tieGroups.length > 0;
   }
 
   /**

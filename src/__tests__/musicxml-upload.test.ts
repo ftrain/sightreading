@@ -11,6 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import { parseMusicXML, getMeasureRange } from '../upload/parser';
 import { buildMusicXML } from '../music/xml/builder';
+import { ProgressivePracticeSession } from '../upload/practice-session';
 import type { NoteData } from '../core/types';
 
 // ============================================
@@ -1107,6 +1108,45 @@ describe('Tie Parsing and Timing', () => {
       expect(result.xml).toContain('<tie type="start"/>');
       expect(result.xml).toContain('<tied type="stop"/>');
       expect(result.xml).toContain('<tied type="start"/>');
+    });
+  });
+
+  describe('Practice session with ties', () => {
+    it('creates tie-aware practice steps', () => {
+      const parsed = parseMusicXML(TIE_ACROSS_BARLINE);
+      const session = new ProgressivePracticeSession(parsed);
+
+      // Should detect the tie group
+      expect(session.hasTies()).toBe(true);
+      expect(session.getTieGroups()).toHaveLength(1);
+      expect(session.getTieGroups()[0]).toEqual({ start: 1, end: 2 });
+
+      // Steps should never split the tie
+      const steps = session.getAllSteps();
+
+      // No step should contain just measure 1 or just measure 2
+      // (they must always be shown together due to the tie)
+      for (const step of steps) {
+        const hasM1 = step.measures.includes(1);
+        const hasM2 = step.measures.includes(2);
+        // If it has measure 1, it must also have measure 2 (and vice versa)
+        if (hasM1 || hasM2) {
+          expect(hasM1 && hasM2).toBe(true);
+        }
+      }
+    });
+
+    it('works normally for pieces without ties', () => {
+      const parsed = parseMusicXML(SIMPLE_QUARTER_NOTES);
+      const session = new ProgressivePracticeSession(parsed);
+
+      expect(session.hasTies()).toBe(false);
+      expect(session.getTieGroups()).toHaveLength(0);
+
+      // Should have normal single-measure steps
+      const steps = session.getAllSteps();
+      const singleMeasureSteps = steps.filter(s => s.measures.length === 1);
+      expect(singleMeasureSteps.length).toBeGreaterThan(0);
     });
   });
 });
